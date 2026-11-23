@@ -92,7 +92,8 @@ def build(cfg, stops, routes_feed, helpers):
             out.append(dict(id=f"E_{sec['key']}{direction}", line=sec["line"], name=f"{first} to {last}", pat=pat, starts=starts,
                             shape=[list(p) for p in B.rdp([(round(x, 5), round(y, 5), round(dd)) for x, y, dd in shape], 0.00004)],
                             svc=["estimated"], est=1, sec=len(meta)))
-            print(f"estimated: {first} to {last}: {len(starts)} trips, {pat[-1][1] / 60:.1f} min, {pat[-1][3] / 1000:.1f} km")
+            ok = f", official {sec['official_km']} km" if "official_km" in sec else ""
+            print(f"estimated: {first} to {last}: {len(starts)} trips, {pat[-1][1] / 60:.1f} min, {pat[-1][3] / 1000:.1f} km on OSM track{ok}")
         meta.append(dict(label=sec["label"], opened=sec["opened"], basis=sec["basis"], sources=sec["sources"]))
     meta_out = dict(geometry=geo["source"], sections=meta)
     return out, {k: v for k, v in new_stops.items()}, meta_out
