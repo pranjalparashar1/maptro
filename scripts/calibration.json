@@ -8,7 +8,7 @@
     {"line": "BLUE", "label": "Blue: Dwarka Sector 21 to Noida Electronic City", "from": 121, "to": 238, "stops": 49, "minutes": 103},
     {"line": "BLUE", "label": "Blue branch: Yamuna Bank to Vaishali", "from": 89, "to": 72, "stops": 7, "minutes": 16},
     {"line": "GREEN", "label": "Green: Inderlok to Brigadier Hoshiar Singh", "from": 13, "to": 202, "stops": 21, "minutes": 44,
-     "hold": "Google counts 21 stops; the feed has 20 (Inderlok, Ashok Park Main, Punjabi Bagh ... Brigadier Hoshiyar Singh). Google's screenshot doesn't expand the stop list, so the extra stop can't be identified yet (Inderlok 6:00 to Brigadier Hoshiar Singh 6:43 am, 21 stops, 44 min; screenshot shared by pranjal 23 Nov 2026)."},
+     "note": "Inderlok 6:00 to Brigadier Hoshiar Singh 6:43 am, 21 stops, 44 min (expanded stop list, Google Maps 24 Nov 2026, screenshot shared by pranjal 23 Nov 2026). The 21st stop is Punjabi Bagh West, which the 2023 feed lacks; build.py STOP_INSERTS adds it."},
     {"line": "GREEN", "label": "Green branch: Kirti Nagar to Ashok Park Main", "from": 100, "to": 34, "stops": 2, "minutes": 5},
     {"line": "VIOLET", "label": "Violet: Kashmere Gate to Raja Nahar Singh", "from": 8, "to": 220, "stops": 33, "minutes": 80},
     {"line": "MAGENTA", "label": "Magenta: Krishna Park Extension to Botanical Garden", "stops": 25, "minutes": 71,
