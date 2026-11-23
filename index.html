@@ -2,125 +2,157 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#07090f">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="description" content="Delhi Metro trains, moving on a map.">
 <title>Maptro</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" crossorigin="anonymous">
 <style>
+/* Tokens. DESIGN.md explains each one; change them there and here together. */
 :root{
   color-scheme:dark;
-  --bg:#07090f; --ink:#f2f4f8; --mute:#8e97a9; --faint:#5b6375;
-  --glass:rgba(20,24,34,.62); --glass-hi:rgba(34,40,54,.72); --edge:rgba(255,255,255,.09);
+  /* layers: true black page, then greys stepping up. Colour is for lines and state only. */
+  --bg:#000; --surface:#0d0d0d; --surface2:#1c1c1c; --line:#2a2a2a;
+  --ink:#f4f4f4; --muted:#8f8f8f; --faint:#5e5e5e;
+  /* state */
+  --live:#3ddc84; --sim:#f5c400; --focus:rgba(255,255,255,.7);
+  /* "do this" is white: an inverted pill */
+  --act:#f4f4f4; --act-ink:#000;
+  --tap:44px; --r-pill:22px; --r-sheet:24px; --r-row:14px;
+  /* motion: reuse these, never invent a new curve for one element */
+  --fold:cubic-bezier(.32,.72,0,1);     /* 520ms: menu, chevron */
+  --settle:cubic-bezier(.25,.6,.3,1);   /* 320-420ms: sheets in and out, fades */
+  --spring:cubic-bezier(.3,1.6,.5,1);   /* 340ms: press release */
   --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
   --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
   --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:15px/1.4 var(--font);overflow:hidden;overscroll-behavior:none;-webkit-font-smoothing:antialiased}
+html,body{margin:0;height:100%;height:100svh;background:var(--bg);color:var(--ink);font:15px/1.4 var(--font);overflow:hidden;overscroll-behavior:none;-webkit-font-smoothing:antialiased;-webkit-user-select:none;user-select:none}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
-button:focus-visible,summary:focus-visible,label:focus-within{outline:2px solid #fff6;outline-offset:2px}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 #map,#gl{position:fixed;inset:0;width:100%;height:100%;background:var(--bg)}
 #gl{touch-action:none;display:none}
 #labels{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
-.glass{background:var(--glass);-webkit-backdrop-filter:blur(22px) saturate(170%);backdrop-filter:blur(22px) saturate(170%);border:.5px solid var(--edge);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+/* the status bar area stays black so the map never runs under the clock */
+.notch{position:fixed;z-index:7;top:0;left:0;right:0;height:var(--sat);background:var(--bg)}
+/* panels: solid near-black with a hairline. No blur or shadow: they sit over a map that redraws every frame. */
+.panel{background:var(--surface);border:1px solid var(--line)}
+/* press feedback: instant on press, springs back on release */
+.press{transition:transform 340ms var(--spring)}
+.press:active,.hw:active>.press{transform:scale(.95);transition:none}
+/* haptics: an invisible native switch over a control, so iOS gives its own tick */
+.hw{position:relative;display:inline-flex;flex:none}
+.hx{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
 .top{position:fixed;z-index:5;top:calc(var(--sat) + 10px);left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);display:flex;gap:8px;align-items:flex-start;pointer-events:none}
 .top>*{pointer-events:auto}
-.pill{height:44px;border-radius:22px;display:flex;align-items:center;gap:10px;padding:0 16px 0 14px;font-weight:600;white-space:nowrap;transition:transform .2s cubic-bezier(.2,.8,.2,1),background .2s}
-.pill:active{transform:scale(.96)}
-#pick{flex:0 1 auto;min-width:0}
+.pill{height:var(--tap);border-radius:var(--r-pill);display:flex;align-items:center;gap:10px;padding:0 16px 0 14px;font-weight:600;white-space:nowrap}
+#pickw{flex:0 1 auto;min-width:0}
+#pick{min-width:0;max-width:100%}
 #pick .lbl{overflow:hidden;text-overflow:ellipsis}
-#pick .n{color:var(--mute);font-weight:500;font-variant-numeric:tabular-nums}
-.dots{display:flex;flex:none}.dots i{width:12px;height:12px;border-radius:50%;margin-right:-4px;box-shadow:0 0 0 2px #151a25}
+#pick .n{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.dots{display:flex;flex:none}.dots i{width:12px;height:12px;border-radius:50%;margin-right:-4px;box-shadow:0 0 0 2px var(--surface)}
 .dots:empty{display:none}
-.chev{width:12px;height:12px;flex:none;opacity:.6;transition:transform .25s}
+.chev{width:12px;height:12px;flex:none;opacity:.6;transition:transform 520ms var(--fold)}
 #pick[aria-expanded=true] .chev{transform:rotate(180deg)}
-#clock{margin-left:auto;flex:none;gap:8px;padding:0 14px;font-variant-numeric:tabular-nums}
+#clockw{margin-left:auto}
+#clock{gap:8px;padding:0 14px;font-variant-numeric:tabular-nums}
 #clock .t{font-weight:650;letter-spacing:.2px}
-#clock .s{font-size:11px;font-weight:700;letter-spacing:.6px;color:var(--mute);display:flex;align-items:center;gap:5px}
-#clock .s::before{content:"";width:6px;height:6px;border-radius:50%;background:#3ddc84;box-shadow:0 0 8px #3ddc84;animation:pulse 2s infinite}
-#clock.sim .s::before{background:#f5c400;box-shadow:0 0 8px #f5c400}
-@keyframes pulse{50%{opacity:.35}}
-/* line picker */
-#menu{position:fixed;z-index:6;top:calc(var(--sat) + 62px);left:calc(var(--sal) + 12px);width:min(320px,calc(100vw - 24px));border-radius:22px;padding:6px;max-height:calc(100dvh - var(--sat) - var(--sab) - 140px);overflow:auto;
-  transform-origin:24px 0;transition:opacity .22s,transform .28s cubic-bezier(.2,.9,.25,1.1);background:var(--glass-hi)}
-#menu[hidden]{display:block;opacity:0;transform:scale(.92) translateY(-6px);pointer-events:none;visibility:hidden;transition:opacity .15s,transform .2s,visibility 0s .2s}
-.row{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 12px;border-radius:14px;cursor:pointer;user-select:none;-webkit-user-select:none}
-.row:active{background:#ffffff0d}
-.row input{position:absolute;opacity:0;pointer-events:none}
-.row .sw{width:22px;height:22px;border-radius:50%;flex:none;border:2px solid var(--c);display:grid;place-items:center;transition:background .18s}
-.row .sw svg{width:12px;height:12px;opacity:0;transform:scale(.5);transition:.18s}
-.row input:checked+.sw{background:var(--c)}
-.row input:checked+.sw svg{opacity:1;transform:none}
+#clock .s{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
+#clock .s::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 2s ease-in-out infinite}
+#clock.sim .s::before{background:var(--sim);animation:none}
+@keyframes pulse{50%{opacity:.3}}
+/* line picker: a dropdown that unfolds from the pill */
+#menu{position:fixed;z-index:6;top:calc(var(--sat) + 62px);left:calc(var(--sal) + 12px);width:min(320px,calc(100vw - 24px));border-radius:var(--r-sheet);padding:6px;max-height:calc(100svh - var(--sat) - var(--sab) - 140px);overflow:auto;scrollbar-width:none;
+  transform-origin:24px 0;transition:opacity 320ms var(--settle),transform 520ms var(--fold)}
+#menu::-webkit-scrollbar{display:none}
+#menu[hidden]{display:block;opacity:0;transform:scale(.94) translateY(-8px);pointer-events:none;visibility:hidden;transition:opacity 240ms var(--settle),transform 320ms var(--settle),visibility 0s 320ms}
+.row{position:relative;display:flex;align-items:center;gap:12px;min-height:var(--tap);padding:0 12px;border-radius:var(--r-row)}
+.row::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--surface2);opacity:0;pointer-events:none}
+.row:active::after{opacity:1}
+.row>:not(.hx){position:relative;z-index:1}
+.row>.hx{z-index:2}
+.row .sw{width:22px;height:22px;border-radius:50%;flex:none;border:2px solid var(--c);display:grid;place-items:center;position:relative}
+.row .sw::before{content:"";position:absolute;inset:-2px;border-radius:50%;background:var(--c);opacity:0;transform:scale(.6);transition:opacity 240ms var(--settle),transform 340ms var(--spring)}
+.row .sw svg{width:12px;height:12px;opacity:0;transform:scale(.5);transition:opacity 240ms var(--settle),transform 340ms var(--spring);position:relative}
+.row input:checked+.sw::before,.row input:checked+.sw svg{opacity:1;transform:none}
 .row .nm{flex:1;font-weight:550}
-.row .ct{color:var(--mute);font-variant-numeric:tabular-nums;font-size:13px}
-.mhead{display:flex;justify-content:space-between;align-items:center;padding:8px 12px 4px;color:var(--mute);font-size:12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase}
-.mhead button{color:#9cc3ff;font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;min-height:32px;padding:0 4px}
-/* cards */
-.sheet{position:fixed;z-index:4;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);bottom:calc(var(--sab) + 12px);margin:0 auto;max-width:420px;border-radius:24px;padding:16px 18px;
-  transition:opacity .25s,transform .35s cubic-bezier(.2,.9,.25,1.05)}
-.sheet[hidden]{display:block;opacity:0;transform:translateY(24px) scale(.98);pointer-events:none;visibility:hidden;transition:opacity .15s,transform .2s,visibility 0s .2s}
+.mhead{display:flex;justify-content:space-between;align-items:center;padding:2px 4px 2px 12px;color:var(--muted);font-size:13px;font-weight:600}
+.mhead .ac{display:flex}
+.mhead button{color:var(--ink);font-size:14px;font-weight:600;min-height:var(--tap);padding:0 10px}
+/* sheets: train or station card, and the quiet-hours note */
+.sheet{position:fixed;z-index:4;left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);bottom:calc(var(--sab) + 12px);margin:0 auto;max-width:420px;border-radius:var(--r-sheet);padding:16px 18px;
+  transition:opacity 320ms var(--settle),transform 420ms var(--settle)}
+.sheet[hidden]{display:block;opacity:0;transform:translateY(24px);pointer-events:none;visibility:hidden;transition:opacity 240ms var(--settle),transform 320ms var(--settle),visibility 0s 320ms}
 #card .hd{display:flex;align-items:center;gap:10px}
 #card .bar{width:6px;align-self:stretch;border-radius:3px;flex:none}
 #card .ti{font-weight:700;font-size:17px;line-height:1.25}
-#card .su{color:var(--mute);font-size:14px}
-#card .x{margin-left:auto;width:32px;height:32px;border-radius:50%;background:#ffffff14;display:grid;place-items:center;flex:none;align-self:flex-start}
+#card .su{color:var(--muted);font-size:14px}
+#card .su i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
+/* 32px circle drawn, 44px to touch */
+#card .xw{margin:-6px -8px 0 auto;align-self:flex-start}
+#card .x{width:var(--tap);height:var(--tap);display:grid;place-items:center}
+#card .x span{width:32px;height:32px;border-radius:50%;background:var(--surface2);display:grid;place-items:center}
 #card .bd{margin-top:12px;display:flex;flex-direction:column;gap:8px}
 .nx{display:flex;align-items:baseline;gap:10px}
 .nx .w{font-variant-numeric:tabular-nums;font-weight:700;font-size:22px;min-width:3.2em}
-.nx .w small{font-size:13px;font-weight:600;color:var(--mute);margin-left:2px}
-.nx .d{color:#cfd5e1;font-size:14px;line-height:1.3}
+.nx .w small{font-size:13px;font-weight:600;color:var(--muted);margin-left:2px}
+.nx .d{color:#cfcfcf;font-size:14px;line-height:1.3}
+.nx .d b{color:var(--ink)}
 .nx i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
 #card .ft{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:10px}
-.tag{font-size:12px;color:var(--faint);font-weight:600;letter-spacing:.3px}
-.btn{height:36px;padding:0 14px;border-radius:18px;background:#ffffff14;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
-.btn[aria-pressed=true]{background:#fff;color:#0b0e15}
+.tag{font-size:13px;color:var(--faint);font-weight:600}
+.btn{height:var(--tap);padding:0 18px;border-radius:var(--r-pill);background:var(--surface2);font-weight:600;font-size:15px;display:inline-flex;align-items:center;gap:6px}
+.btn.on,.btn.act{background:var(--act);color:var(--act-ink)}
 #toast{text-align:center}
 #toast b{display:block;font-size:16px}
-#toast span{color:var(--mute);font-size:14px}
-#toast .btn{margin-top:10px}
-/* disclaimer */
-#disc{position:fixed;z-index:3;left:calc(var(--sal) + 12px);bottom:calc(var(--sab) + 12px);border-radius:16px;max-width:min(360px,calc(100vw - 24px));font-size:13px;color:var(--mute);transition:opacity .2s}
-#disc summary{list-style:none;cursor:pointer;height:32px;display:flex;align-items:center;gap:6px;padding:0 12px;font-weight:600;font-size:12px;letter-spacing:.3px}
+#toast span{color:var(--muted);font-size:14px}
+#toast .hw{margin-top:12px}
+/* disclaimer: native <details> */
+#disc{position:fixed;z-index:3;left:calc(var(--sal) + 12px);bottom:calc(var(--sab) + 12px);border-radius:var(--r-pill);max-width:min(360px,calc(100vw - 24px));font-size:13px;color:var(--muted);transition:opacity 240ms var(--settle)}
+#disc[open]{border-radius:18px}
+#disc summary{list-style:none;cursor:pointer;min-height:var(--tap);display:flex;align-items:center;gap:6px;padding:0 14px;font-weight:600;font-size:13px}
 #disc summary::-webkit-details-marker{display:none}
-#disc summary svg{width:10px;height:10px;transition:transform .2s;opacity:.7}
+#disc summary svg{width:10px;height:10px;transition:transform 520ms var(--fold);opacity:.7}
 #disc[open] summary svg{transform:rotate(180deg)}
 #disc p{margin:0;padding:0 14px 12px;line-height:1.45}
-#disc a{color:#c3cad8}
+#disc a{color:#c8c8c8}
 body.carded #disc{opacity:0;pointer-events:none}
 .maplibregl-ctrl-bottom-right{bottom:var(--sab)!important;right:var(--sar)!important}
-.maplibregl-ctrl-attrib{background:#0008!important;color:#7d8597!important;font-size:10px}
-.maplibregl-ctrl-attrib a{color:#9aa3b5!important}
+.maplibregl-ctrl-attrib{background:#000a!important;color:var(--faint)!important;font-size:10px}
+.maplibregl-ctrl-attrib a{color:var(--muted)!important}
 .maplibregl-ctrl-attrib-button{filter:invert(1);opacity:.5}
-.err{position:fixed;inset:0;display:grid;place-items:center;color:var(--mute);padding:24px;text-align:center}
+.err{position:fixed;inset:0;display:grid;place-content:center;gap:14px;justify-items:center;color:var(--muted);padding:24px;text-align:center}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head><body>
 <div id="map"></div>
 <canvas id="gl" aria-label="Map of Delhi Metro trains"></canvas>
 <canvas id="labels" aria-hidden="true"></canvas>
+<div class="notch"></div>
 
 <div class="top">
-  <button id="pick" class="pill glass" aria-expanded="false" aria-controls="menu">
+  <span class="hw" id="pickw"><button id="pick" class="pill panel press" aria-expanded="false" aria-controls="menu">
     <span class="dots" id="dots"></span><span class="lbl" id="plbl">Lines</span><span class="n" id="pcount"></span>
     <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </button>
-  <button id="clock" class="pill glass" aria-label="Clock. Tap to change speed"><span class="t" id="time">--:--</span><span class="s" id="spd">LIVE</span></button>
+  </button></span>
+  <span class="hw" id="clockw"><button id="clock" class="pill panel press" aria-label="Clock. Tap to change speed"><span class="t" id="time">--:--</span><span class="s" id="spd">Live</span></button></span>
 </div>
 
-<div id="menu" class="glass" role="dialog" aria-label="Choose lines" hidden>
-  <div class="mhead"><span>Lines</span><span><button id="all">All</button> · <button id="none">None</button></span></div>
+<div id="menu" class="panel" aria-label="Choose lines" hidden>
+  <div class="mhead"><span>Lines</span><span class="ac"><span class="hw"><button id="all" class="press">All</button></span><span class="hw"><button id="none" class="press">None</button></span></span></div>
   <div id="rows"></div>
 </div>
 
-<div id="card" class="sheet glass" hidden aria-live="polite"></div>
-<div id="toast" class="sheet glass" hidden></div>
+<div id="card" class="sheet panel" hidden aria-live="polite"></div>
+<div id="toast" class="sheet panel" hidden></div>
 
-<details id="disc" class="glass">
+<details id="disc" class="panel">
   <summary>Disclaimer <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
   <p>A personal project, not affiliated with DMRC. Trains are drawn where the published timetable says they should be, so positions are scheduled or estimated, not live.
-  <span id="attr">Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>, © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>.</span></p>
+  <span id="attr">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, tiles by <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> (<a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>).</span></p>
 </details>
 
 <script>
@@ -234,6 +266,26 @@ const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',R
 const DEFAULT = ['YELLOW','BLUE'];
 const SPEEDS = [0, 10, 60];
 const TRAIL_S = 50;
+// Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
+// true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
+const BLACK_STYLE = { version: 8,
+  sources: { osm: { type: 'vector', url: 'https://tiles.openfreemap.org/planet',
+    attribution: '<a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> <a href="https://www.openmaptiles.org/" target="_blank">© OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>' } },
+  layers: [
+    { id: 'bg', type: 'background', paint: { 'background-color': '#000' } },
+    { id: 'green', type: 'fill', source: 'osm', 'source-layer': 'park', paint: { 'fill-color': '#06100a' } },
+    { id: 'wood', type: 'fill', source: 'osm', 'source-layer': 'landcover', filter: ['match', ['get', 'class'], ['wood', 'grass', 'farmland'], true, false], paint: { 'fill-color': '#050c07' } },
+    { id: 'water', type: 'fill', source: 'osm', 'source-layer': 'water', paint: { 'fill-color': '#08131f' } },
+    { id: 'river', type: 'line', source: 'osm', 'source-layer': 'waterway', paint: { 'line-color': '#08131f', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, .6, 16, 3] } },
+    { id: 'building', type: 'fill', source: 'osm', 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': '#0c0c0c' } },
+    { id: 'road-minor', type: 'line', source: 'osm', 'source-layer': 'transportation', minzoom: 12,
+      filter: ['match', ['get', 'class'], ['minor', 'service', 'tertiary'], true, false],
+      paint: { 'line-color': '#121212', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 12, .5, 16, 5] } },
+    { id: 'road-major', type: 'line', source: 'osm', 'source-layer': 'transportation',
+      filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
+      paint: { 'line-color': '#1d1d1d', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 9, .4, 16, 8] } },
+  ] };
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const CDN = ['https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js','https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'];
 
 let D, R, lines = [], sel = new Set(), color = {}, rgb = {};
@@ -289,9 +341,9 @@ void main(){vec2 p=gl_PointCoord*2.-1.;float r=length(p);if(r>1.)discard;
   if(v_kind<.5){ // train: additive glow pass, or the solid body on top
     if(u_body<.5){gl_FragColor=vec4(v_col.rgb*exp(-r*r*4.5)*.75,0.)*v_col.a;}
     else{float aa=.07;float edge=smoothstep(.52,.52-aa,r);float body=smoothstep(.43,.43-aa,r);float core=smoothstep(.2,.2-aa,r);
-      vec3 c=mix(vec3(.03,.04,.07),mix(v_col.rgb,vec3(1.),.25),body);c=mix(c,vec3(1.),core*.9);gl_FragColor=vec4(c,1.)*edge*v_col.a;}}
+      vec3 c=mix(vec3(0.),mix(v_col.rgb,vec3(1.),.25),body);c=mix(c,vec3(1.),core*.9);gl_FragColor=vec4(c,1.)*edge*v_col.a;}}
   else if(v_kind<1.5){float ring=smoothstep(.98,.84,r);float inner=smoothstep(.58,.46,r);
-    gl_FragColor=vec4(mix(v_col.rgb,vec3(.035,.045,.07),inner),1.)*ring*v_col.a;}
+    gl_FragColor=vec4(mix(v_col.rgb,vec3(0.),inner),1.)*ring*v_col.a;}
   else{float a=smoothstep(1.,.9,r)*smoothstep(.74,.84,r);gl_FragColor=vec4(1.)*a*v_col.a;}
 }`;
 
@@ -431,7 +483,7 @@ function buildDynamic(t) {
     const [x, y, tx, ty] = o.pos;
     const isPick = picked && picked.r === o.r && picked.s0 === o.s0;
     g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, (o.dwell ? 1.12 : 1) * (isPick ? 1.25 : 1), 0);
-    if (isPick) { picked.o = o; const a = .55 + .45 * Math.sin(performance.now() / 260);
+    if (isPick) { picked.o = o; const a = RM.matches ? 1 : .55 + .45 * Math.sin(performance.now() / 260);
       g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 2.3, 2); }
   }
   return cnt;
@@ -441,11 +493,7 @@ function buildDynamic(t) {
 function mapLibreCamera(ml) {
   const map = new ml.Map({
     container: 'map',
-    style: { version: 8, sources: { base: { type: 'raster', tileSize: 256, maxzoom: 19,
-      tiles: ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}@2x.png`),
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>' } },
-      layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#07090f' } },
-        { id: 'base', type: 'raster', source: 'base', paint: { 'raster-opacity': .95, 'raster-brightness-max': .85, 'raster-contrast': .1, 'raster-fade-duration': 150 } }] },
+    style: BLACK_STYLE,
     center: [77.2, 28.6], zoom: 10, minZoom: 8.5, maxZoom: 16.5, maxBounds: [[76.4, 28.05], [78.0, 29.15]],
     dragRotate: false, pitchWithRotate: false, touchPitch: false, attributionControl: { compact: true },
     fadeDuration: 0, pixelRatio: DPR(),
@@ -456,7 +504,7 @@ function mapLibreCamera(ml) {
     zoom: () => map.getZoom(),
     project: (x, y) => { const p = map.project(unmerc(x, y)); return [p.x, p.y]; },
     center: (x, y) => map.setCenter(unmerc(x, y)),
-    fit: (b, anim) => map.fitBounds([unmerc(b[0], b[3]), unmerc(b[2], b[1])], { padding: pad(), duration: anim ? 900 : 0, maxZoom: 13.5 }),
+    fit: (b, anim) => map.fitBounds([unmerc(b[0], b[3]), unmerc(b[2], b[1])], { padding: pad(), duration: anim && !RM.matches ? 900 : 0, maxZoom: 13.5 }),
     redraw: () => map.triggerRepaint(),
     ready: new Promise((res, rej) => {
       // style.load, not load: the inline style is ready at once, and load would wait on basemap tiles that may never arrive
@@ -472,6 +520,9 @@ function mapLibreCamera(ml) {
       map.on('error', e => { if (!map.loaded() && e && e.error && /webgl/i.test(String(e.error.message))) rej(e.error); });
     }),
   };
+  // OSM credit stays one tap away on the (i) button rather than a line of text across the map
+  map.once('load', () => { const a = map.getContainer().querySelector('.maplibregl-ctrl-attrib'); if (a) a.classList.remove('maplibregl-compact-show'); });
+  map.once('idle', () => { const a = map.getContainer().querySelector('.maplibregl-ctrl-attrib'); if (a) a.classList.remove('maplibregl-compact-show'); });
   map.on('move', () => labelsDirty = true); map.on('resize', () => labelsDirty = true);
   map.on('dragstart', () => setFollow(false));
   map.on('click', e => tap(e.point.x, e.point.y));
@@ -496,11 +547,11 @@ function canvasCamera() { // stand-alone WebGL camera with pan, pinch and wheel,
       if (!an) { v.x = cx; v.y = cy; v.z = z; labelsDirty = true; return; }
       anim = { t0: performance.now(), a: { ...v }, b: { x: cx, y: cy, z } }; },
     redraw: () => {
-      if (anim) { const k = Math.min(1, (performance.now() - anim.t0) / 800), e = 1 - Math.pow(1 - k, 3);
+      if (anim) { const k = RM.matches ? 1 : Math.min(1, (performance.now() - anim.t0) / 800), e = 1 - Math.pow(1 - k, 3);
         for (const q of ['x', 'y', 'z']) v[q] = anim.a[q] + (anim.b[q] - anim.a[q]) * e; labelsDirty = true; if (k >= 1) anim = null; }
       const dpr = DPR(), w = Math.round(W() * dpr), h = Math.round(H() * dpr);
       if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; labelsDirty = true; }
-      gl.viewport(0, 0, w, h); gl.clearColor(.027, .035, .059, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.viewport(0, 0, w, h); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
       const s = ws(), sx = 2 * s / W(), sy = -2 * s / H();
       gpu.draw(gl, [sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, 1, 0, -v.x * sx, -v.y * sy, 0, 1], { zoom: v.z, dpr });
     },
@@ -563,20 +614,31 @@ function drawLabels() {
       const box = [bx - 2, by - 1, bx + w + 2, by + h + 1];
       if (box[0] < 2 || box[2] > W - 2 || hit(box) || coversDot(box, li)) continue;
       placed.push(box);
-      lx.strokeStyle = 'rgba(7,9,15,.9)'; lx.lineWidth = 3.5; lx.strokeText(s.name, bx, by + h / 2);
-      lx.fillStyle = big ? '#ffffff' : '#c4cbd8'; lx.fillText(s.name, bx, by + h / 2);
+      lx.strokeStyle = 'rgba(0,0,0,.92)'; lx.lineWidth = 3.5; lx.strokeText(s.name, bx, by + h / 2);
+      lx.fillStyle = big ? '#ffffff' : '#bdbdbd'; lx.fillText(s.name, bx, by + h / 2);
       break;
     }
   }
 }
 
 /* ---------- UI ---------- */
+// iOS gives a system haptic tick when a real switch toggles, so each button carries an invisible one (DESIGN.md, Haptics).
+// Android has no switch tick but has vibrate.
+const buzz = () => { try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {} };
+function haptic(btn) {
+  const w = btn.parentElement;
+  if (!w || !w.classList.contains('hw') || w.querySelector('.hx')) return;
+  const h = document.createElement('input');
+  h.type = 'checkbox'; h.setAttribute('switch', ''); h.className = 'hx'; h.tabIndex = -1; h.setAttribute('aria-hidden', 'true');
+  h.addEventListener('click', e => { e.stopPropagation(); buzz(); btn.click(); });
+  w.appendChild(h);
+}
 const save = () => { try { localStorage.setItem('maptro-lines', JSON.stringify([...sel])); } catch (e) {} };
 function buildMenu() {
-  $('rows').innerHTML = lines.map(l => `<label class="row" style="--c:${color[l]}"><input type="checkbox" value="${l}" ${sel.has(l) ? 'checked' : ''}>
+  $('rows').innerHTML = lines.map(l => `<label class="row" style="--c:${color[l]}"><input class="hx" type="checkbox" switch value="${l}" ${sel.has(l) ? 'checked' : ''}>
     <span class="sw"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-    <span class="nm">${NAMES[l] || l}</span><span class="ct" data-c="${l}"></span></label>`).join('');
-  $('rows').onchange = e => { const l = e.target.value; e.target.checked ? sel.add(l) : sel.delete(l); selChanged(); };
+    <span class="nm">${NAMES[l] || l}</span></label>`).join('');
+  $('rows').onchange = e => { buzz(); const l = e.target.value; e.target.checked ? sel.add(l) : sel.delete(l); selChanged(); };
 }
 function selChanged() { selDirty = true; refit = true; save(); paintPicker(); if (picked && !sel.has(picked.r.line)) closeCard(); }
 function paintPicker() {
@@ -592,26 +654,24 @@ function openMenu(open) {
 $('pick').onclick = e => { e.stopPropagation(); openMenu($('menu').hidden); };
 $('all').onclick = () => { lines.forEach(l => sel.add(l)); selChanged(); };
 $('none').onclick = () => { sel.clear(); selChanged(); };
-document.addEventListener('pointerdown', e => { if (!$('menu').hidden && !e.target.closest('#menu,#pick')) openMenu(false); }, true);
+document.addEventListener('pointerdown', e => { if (!$('menu').hidden && !e.target.closest('#menu,#pickw')) openMenu(false); }, true);
+for (const id of ['pick', 'clock', 'all', 'none']) haptic($(id));
 $('clock').onclick = () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]);
 
 function paintClock(force) {
   const t = curT(); $('time').textContent = hhmm(t);
-  $('spd').textContent = speed ? speed + '×' : 'LIVE'; $('clock').classList.toggle('sim', !!speed);
+  $('spd').textContent = speed ? speed + '×' : 'Live'; $('clock').classList.toggle('sim', !!speed);
 }
 let counts = {};
 function paintCounts() {
   let tot = 0; for (const l of lines) { const n = counts[l] || 0; if (sel.has(l)) tot += n; }
   $('pcount').textContent = sel.size ? `· ${tot}` : '';
   $('pick').setAttribute('aria-label', `${$('plbl').textContent}, ${tot} trains running. Choose lines`);
-  // menu counts need every line, cheap enough to do at 4 Hz
-  const all = {}; for (const o of trainsAt(R, curT(), null)) all[o.r.line] = (all[o.r.line] || 0) + 1;
-  for (const el of $('rows').querySelectorAll('[data-c]')) el.textContent = all[el.dataset.c] || '';
   // nothing running on the chosen lines: offer to skip ahead
   const empty = sel.size > 0 && tot === 0 && !picked;
   if (empty !== !$('toast').hidden) {
     $('toast').hidden = !empty;
-    if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><button class="btn" id="ff">Skip to 8 am</button>`, $('ff').onclick = () => { simT = 8 * 3600; speed = 10; lastReal = performance.now(); paintClock(); };
+    if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><span class="hw"><button class="btn act press" id="ff">Skip to 8 am</button></span>`, haptic($('ff')), $('ff').onclick = () => { simT = 8 * 3600; speed = 10; lastReal = performance.now(); paintClock(); };
   }
 }
 
@@ -622,30 +682,43 @@ function tap(x, y) {
   for (const o of trains) { const [a, b] = cam.project(o.pos[0], o.pos[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'train', r: o.r, s0: o.s0, o }; } }
   if (!best) { bd = 20; for (const s of stations) { const [a, b] = cam.project(s.m[0], s.m[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'station', s }; } } }
   if (!best) return closeCard();
-  picked = best; setFollow(false); paintCard(); $('card').hidden = false; document.body.classList.add('carded');
+  if (best.kind !== 'train') buzz();
+  picked = best; setFollow(false); buildCard(); paintCard(); $('card').hidden = false; document.body.classList.add('carded');
 }
 function closeCard() { picked = null; setFollow(false); $('card').hidden = true; document.body.classList.remove('carded'); }
-function setFollow(f) { follow = f; const b = $('follow'); if (b) b.setAttribute('aria-pressed', f); }
+function setFollow(f) { follow = f; const b = $('follow'); if (b) { b.setAttribute('aria-pressed', f); b.classList.toggle('on', f); } }
 const mins = s => { const m = Math.round(s / 60); return m <= 0 ? ['now', ''] : [m, 'min']; };
+const CLOSE = `<span class="hw xw"><button class="x press" aria-label="Close" id="cx"><span><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span></button></span>`;
+// The card's frame is built once per pick; paintCard (4 Hz) only patches the body text, and only when it changes,
+// so a finger on Follow or Close is never under a rebuilt node.
+function buildCard() {
+  const el = $('card');
+  if (picked.kind === 'train') {
+    const r = picked.r, to = D.stops[r.pat[r.pat.length - 1][0]][0];
+    el.innerHTML = `<div class="hd"><span class="bar" style="background:${color[r.line]}"></span><div><div class="ti">${NAMES[r.line]} Line</div><div class="su">to ${to}</div></div>${CLOSE}</div>
+      <div class="bd" id="cbd"></div>
+      <div class="ft"><span class="tag">${r.est ? 'Estimated' : 'Scheduled'}</span><span class="hw"><button class="btn press" id="follow" aria-pressed="false">Follow</button></span></div>`;
+    $('follow').onclick = () => setFollow(!follow); haptic($('follow'));
+  } else {
+    const s = picked.s;
+    el.innerHTML = `<div class="hd"><div><div class="ti">${s.name}</div><div class="su">${[...s.lines].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)).map(l => `<i style="background:${color[l]}"></i>`).join('')}</div></div>${CLOSE}</div>
+      <div class="bd" id="cbd"></div>`;
+  }
+  $('cx').onclick = closeCard; haptic($('cx'));
+}
 function paintCard() {
   if (!picked) return;
-  const t = curT(), el = $('card');
+  const t = curT(); let html;
   if (picked.kind === 'train') {
     const o = trains.find(q => q.r === picked.r && q.s0 === picked.s0);
     if (!o) return closeCard();
-    const r = o.r, to = D.stops[r.pat[r.pat.length - 1][0]][0], nm = D.stops[o.next][0], [w, u] = mins(o.eta - t);
-    el.innerHTML = `<div class="hd"><span class="bar" style="background:${color[r.line]}"></span><div><div class="ti">${NAMES[r.line]} Line</div><div class="su">to ${to}</div></div>
-      <button class="x" aria-label="Close" id="cx"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button></div>
-      <div class="bd"><div class="nx">${o.dwell ? `<span class="w">At</span><span class="d">${nm}</span>` : `<span class="w">${w}<small>${u}</small></span><span class="d">Next stop<br><b style="color:#fff">${nm}</b></span>`}</div></div>
-      <div class="ft"><span class="tag">${r.est ? 'ESTIMATED' : 'SCHEDULED'} · LEFT ${D.stops[r.pat[0][0]][0].toUpperCase()} ${hhmm(o.s0)}</span><button class="btn" id="follow" aria-pressed="${follow}">Follow</button></div>`;
-    $('follow').onclick = () => setFollow(!follow);
+    const nm = D.stops[o.next][0], [w, u] = mins(o.eta - t);
+    html = `<div class="nx">${o.dwell ? `<span class="w">At</span><span class="d"><b>${nm}</b></span>` : `<span class="w">${w}<small>${u}</small></span><span class="d">Next stop<br><b>${nm}</b></span>`}</div>`;
   } else {
-    const s = picked.s, deps = departures(R, s.ids, t, sel, 4);
-    el.innerHTML = `<div class="hd"><div><div class="ti">${s.name}</div><div class="su">${[...s.lines].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b)).map(l => `<i style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color[l]};margin-right:4px"></i>`).join('')}</div></div>
-      <button class="x" aria-label="Close" id="cx"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></button></div>
-      <div class="bd">${deps.length ? deps.map(d => { const [w, u] = mins(d.time - t); return `<div class="nx"><span class="w">${w}<small>${u}</small></span><span class="d"><i style="background:${color[d.r.line]}"></i>to ${D.stops[d.to][0]}${d.r.est ? ' <span class="tag">EST.</span>' : ''}</span></div>`; }).join('') : '<div class="su">No more trains today.</div>'}</div>`;
+    const deps = departures(R, picked.s.ids, t, sel, 4);
+    html = deps.length ? deps.map(d => { const [w, u] = mins(d.time - t); return `<div class="nx"><span class="w">${w}<small>${u}</small></span><span class="d"><i style="background:${color[d.r.line]}"></i>to ${D.stops[d.to][0]}${d.r.est ? ' <span class="tag">estimated</span>' : ''}</span></div>`; }).join('') : '<div class="su">No more trains today.</div>';
   }
-  $('cx').onclick = closeCard;
+  const bd = $('cbd'); if (bd && bd._h !== html) { bd._h = html; bd.innerHTML = html; }
 }
 
 /* ---------- loop ---------- */
@@ -685,7 +758,7 @@ Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async 
   // used by the screenshot script to find a train to tap
   window.__maptro = { trainsOnScreen: () => trains.map(o => cam.project(o.pos[0], o.pos[1])) };
   requestAnimationFrame(frame);
-}).catch(e => { document.body.insertAdjacentHTML('beforeend', '<div class="err">Couldn\'t load the timetable. Pull to refresh.</div>'); console.error(e); });
+}).catch(e => { document.body.insertAdjacentHTML('beforeend', '<div class="err"><span>Couldn\'t load the timetable.</span><button class="btn act press" onclick="location.reload()">Tap to reload</button></div>'); console.error(e); });
 })();
 </script>
 </body></html>
