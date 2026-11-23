@@ -44,3 +44,32 @@ print("trips sharing shapes:",t.shape_id.nunique(),"shapes",sh.shape_id.nunique(
 times=np.arange(5*3600,24*3600,60)
 active=[((first.start<=tt)&(first.end>=tt)&first.trip_id.isin(tw.trip_id)).sum() for tt in times]
 i=int(np.argmax(active)); print("peak trains in service:",max(active),"at",times[i]//3600,":",times[i]%3600//60)
+# --- after the build: check data.json (python3 scripts/audit.py GTFS_DIR [data.json]) ---
+import json, math, os
+J = sys.argv[2] if len(sys.argv) > 2 else 'data.json'
+if os.path.exists(J):
+    dj = json.load(open(J)); S = dj['stops']
+    def hvm(a, b):
+        p1, p2 = math.radians(a[1]), math.radians(b[1]); dl = math.radians(b[0] - a[0])
+        return 2 * 6371008.8 * math.asin(math.sqrt(math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2))
+    KX = math.cos(math.radians(28.62))
+    def segd(pt, a, b):  # metres from pt to segment ab (local flat approximation)
+        ax, ay, bx, by, px, py = a[0] * KX, a[1], b[0] * KX, b[1], pt[0] * KX, pt[1]
+        dx, dy = bx - ax, by - ay; L2 = dx * dx + dy * dy
+        u = 0 if L2 == 0 else max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / L2))
+        return math.hypot(ax + dx * u - px, ay + dy * u - py) * 111195
+    vs, off, back, hp = [], [], 0, []
+    for ro in dj['routes']:
+        p = ro['pat']
+        vs += [(b[3] - a[3]) / (b[1] - a[2]) * 3.6 for a, b in zip(p, p[1:]) if b[1] > a[2]]
+        for q in p:
+            s_ = S[str(q[0])][1:]; off.append(min(segd(s_, a, b) for a, b in zip(ro['shape'], ro['shape'][1:])))
+        sh_ = ro['shape']
+        for a, b, c in zip(sh_, sh_[1:], sh_[2:]):
+            v1 = (a[0] - b[0], a[1] - b[1]); v2 = (c[0] - b[0], c[1] - b[1])
+            if v1[0] * v2[0] + v1[1] * v2[1] > 0.9 * math.hypot(*v1) * math.hypot(*v2): back += 1; hp.append(ro['id'])
+    print(f"data.json: {len(dj['routes'])} routes ({sum(1 for x in dj['routes'] if x.get('est'))} estimated), {len(S)} stops")
+    print("data.json segment speed km/h pct 1/50/99/max:", np.percentile(vs, [1, 50, 99]).round(1), round(max(vs), 1))
+    print("data.json stop to shape m, median/90%/max:", round(float(np.median(off))), round(float(np.percentile(off, 90))), round(max(off)))
+    print("data.json shape hairpins (<26 deg):", back, sorted(set(hp)))
+    print("data.json build fixes:", len(dj.get('meta', {}).get('fixes', [])))

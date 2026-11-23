@@ -1,0 +1,81 @@
+{
+  "_about": "Sections open now but missing from the 2023 DMRC feed. Hand-maintained: every opening date and service pattern needs a dated source. Trains on these sections are ESTIMATED, not from any timetable. Station points and track come from phase4_geometry.json (OpenStreetMap). Existing feed stops are referred to by their feed stop_id.",
+  "stations": {
+    "yashobhoomi": [9001, "Yashobhoomi Dwarka Sector 25"],
+    "krishna_park_ext": [9002, "Krishna Park Extension"],
+    "bhalaswa": [9003, "Bhalaswa"],
+    "haiderpur_village": [9004, "Haiderpur Village"],
+    "uttari_pitampura": [9005, "Uttari Pitampura-Prashant Vihar"],
+    "madhuban_chowk": [9006, "Madhuban Chowk"],
+    "deepali_chowk": [9007, "Deepali Chowk"],
+    "burari": [9008, "Burari"],
+    "jharoda_majra": [9009, "Jharoda Majra"],
+    "jagatpur_wazirabad": [9010, "Jagatpur-Wazirabad"],
+    "nanaksar_sonia_vihar": [9011, "Nanaksar-Sonia Vihar"],
+    "khajuri_khas": [9012, "Khajuri Khas"],
+    "bhajanpura": [9013, "Bhajanpura"],
+    "yamuna_vihar": [9014, "Yamuna Vihar"]
+  },
+  "sections": [
+    {
+      "key": "airport",
+      "label": "Airport Line: Dwarka Sector 21 to Yashobhoomi Dwarka Sector 25",
+      "line": "ORANGE/AIRPORT", "opened": "2023-09-17", "shape": "airport",
+      "stops": [121, "yashobhoomi"],
+      "timing": {"continues": "O_DN_R", "every": 1},
+      "reverse_timing": {"feeds": "O_DN", "every": 1},
+      "basis": "Every Airport Line train is assumed to run through to Yashobhoomi, as the line was extended rather than given a shuttle.",
+      "sources": [
+        "DMRC journey planner, delhimetrorail.com/map, checked by pranjal 23 Nov 2026: Dwarka Sector 21 to Yashobhoomi 2 min (map: 2.1 min)",
+        "PMO, 'PM inaugurates extension of Airport Metro Express Line ... to Yashobhoomi Dwarka Sector 25', 17 Sep 2023, pmindia.gov.in",
+        "Wikipedia, Yashobhoomi Dwarka Sector - 25 metro station, read 23 Nov 2026"
+      ]
+    },
+    {
+      "key": "magenta_kpe",
+      "label": "Magenta Line: Janakpuri West to Krishna Park Extension",
+      "line": "MAGENTA", "official_km": 1.81, "opened": "2025-01-05", "shape": "magenta_kpe",
+      "stops": [108, "krishna_park_ext"],
+      "timing": {"continues": "M_JB_R", "every": 2},
+      "reverse_timing": {"feeds": "M_JB", "every": 2},
+      "basis": "Every second Magenta train runs on to Krishna Park Extension (Wikipedia, as of Apr 2026). At opening it was a 16-minute shuttle (Metro Rail Today, 5 Jan 2025).",
+      "sources": [
+        "DMRC Annual Report 2024-25 (published Nov 2025), Directors' Report §2.2-2.3: 1.810 km Janakpuri West to Krishna Park, inaugurated 05.01.2025",
+        "Metro Rail Today, 'DMRC opens first section of Delhi Metro Phase 4 from Janakpuri West - Krishna Park Extension', 5 Jan 2025",
+        "Wikipedia, Magenta Line (Delhi Metro), read 23 Nov 2026"
+      ]
+    },
+    {
+      "key": "magenta_north",
+      "label": "Magenta Line: Majlis Park to Deepali Chowk",
+      "line": "MAGENTA", "official_km": 9.9, "opened": "2026-03-08", "shape": "magenta_north",
+      "stops": [173, "bhalaswa", 38, "haiderpur_village", "uttari_pitampura", "madhuban_chowk", "deepali_chowk"],
+      "timing": {"headway_like": "M_JB"},
+      "reverse_timing": {"headway_like": "M_JB_R"},
+      "basis": "Runs as its own service, not through to Botanical Garden (Wikipedia). No published headway was found, so trains are spaced like the feed's Magenta Line timetable.",
+      "sources": [
+        "ThePrint (PTI), 8 Mar 2026: 9.9 km",
+        "ThePrint (PTI), 'DMRC begins operations on two new metro corridors', 8 Mar 2026",
+        "Tribune India, 'DMRC begins services on two newly inaugurated corridors', 9 Mar 2026",
+        "Wikipedia, Magenta Line (Delhi Metro), read 23 Nov 2026"
+      ]
+    },
+    {
+      "key": "pink_ring",
+      "label": "Pink Line: Majlis Park to Maujpur-Babarpur, closing the ring",
+      "line": "PINK", "official_km": 12.32, "opened": "2026-03-08", "shape": "pink_ring",
+      "stops": [173, "burari", "jharoda_majra", "jagatpur_wazirabad", "nanaksar_sonia_vihar", "khajuri_khas", "bhajanpura", "yamuna_vihar", 215],
+      "calibrate": {"from": 173, "to": "yamuna_vihar", "minutes": 20},
+      "timing": {"continues": "P_MS_R", "every": 1},
+      "reverse_timing": {"departs": "P_MS", "at": 215, "every": 1},
+      "basis": "Pink trains now run round the ring in both directions (Wikipedia). Trains reaching Majlis Park are assumed to carry on to Maujpur-Babarpur, and trains reaching Maujpur-Babarpur from Welcome are assumed to carry on round the ring via Yamuna Vihar. The feed's own Pink trains still also run to Shiv Vihar. Soorghat is built but not open, so trains pass it (Google Maps also counts 7 stops Majlis Park to Yamuna Vihar). Run times are scaled so Majlis Park to Yamuna Vihar takes 20 minutes, as Google Maps shows.",
+      "sources": [
+        "Google Maps transit directions, screenshot shared by pranjal 23 Nov 2026: Majlis Park to Yamuna Vihar, 7 stops, 20 min (used to calibrate run times)",
+        "DMRC Annual Report 2024-25 (published Nov 2025), Directors' Report §2.2-2.3: Majlis Park - Maujpur Babarpur route length 12.32 km, under construction at 31.03.2025",
+        "ThePrint (PTI), 'DMRC begins operations on two new metro corridors', 8 Mar 2026",
+        "Tribune India, 'DMRC begins services on two newly inaugurated corridors', 9 Mar 2026",
+        "Wikipedia, Pink Line (Delhi Metro), read 23 Nov 2026"
+      ]
+    }
+  ]
+}
