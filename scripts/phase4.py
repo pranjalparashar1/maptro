@@ -3,7 +3,7 @@
 Called by build.py after the feed routes are built. Nothing here is a timetable:
  - Track and new station points: OpenStreetMap (phase4_geometry.json).
  - Running times: each segment takes distance / the line's average running speed in
-   the feed, but never less than a train could manage (build.tmin), plus the feed's 20 s dwell.
+   the feed (before calibration.json), but never less than a train could manage (build.tmin), plus the feed's 20 s dwell.
  - Trip times come from the section's "timing" rule:
      continues: R    trains of feed route R carry on past R's last stop (every Nth train)
      feeds: R        trains arrive in time to become feed route R's trips (every Nth)
@@ -73,7 +73,7 @@ def build(cfg, stops, routes_feed, helpers):
     out, meta = [], []
     for sec in cfg["sections"]:
         ids = [x if isinstance(x, int) else sid[x] for x in sec["stops"]]
-        vavg = _line_speed(routes_feed, sec["line"])
+        vavg = _line_speed(getattr(B, "ROUTES_UNCALIBRATED", routes_feed), sec["line"])
         vmax = B.LINE_VMAX.get(sec["line"], B.VMAX_DEFAULT)
         for direction, rule in (("", sec["timing"]), ("_R", sec["reverse_timing"])):
             seq = ids if not direction else ids[::-1]
