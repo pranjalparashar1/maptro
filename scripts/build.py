@@ -20,6 +20,8 @@ Fixes applied (each is printed when the build runs):
   5. Run times: the feed's running times are scaled line by line so end-to-end
      rides match published ride times (calibration.json, from Google Maps).
      See calibrate() below.
+  6. New stops: stations that opened after the feed, on lines it already has, are inserted
+     from STOP_INSERTS (Punjabi Bagh West on Green), before calibration.
 Estimated sections (Phase 4 openings not in the feed) come from phase4.json,
 see scripts/phase4.py. They take their speeds from the uncalibrated feed.
 """
@@ -51,6 +53,14 @@ LINE_VMAX = {"ORANGE/AIRPORT": 120}
 VMAX_DEFAULT = 80
 ACCEL = 1.0  # m/s^2, used for both acceleration and braking (assumption, typical for metro stock)
 HAIRPIN_DEG = 30
+# Stations opened after the feed was made, on routes the feed already has. (line, after, before, stop_id,
+# dwell s, source): every route of `line` that runs after->before, or before->after, gets the stop
+# between them. The run time is split by distance, the dwell is added, and later times shift by it.
+# Calibration then rescales the line, so the added dwell doesn't change calibrated ride times.
+STOP_INSERTS = [
+    ("GREEN", 33, 32, 176, 20, "Green Line platforms at Punjabi Bagh West, between Punjabi Bagh and Shivaji Park, "
+     "opened 29 Mar 2022 (PTI in The Tribune that day); Google Maps lists the stop on Green trains (24 Nov 2026)"),
+]
 
 r = pd.read_csv(f"{D}/routes.txt"); s = pd.read_csv(f"{D}/stops.txt"); t = pd.read_csv(f"{D}/trips.txt")
 st = pd.read_csv(f"{D}/stop_times.txt"); sh = pd.read_csv(f"{D}/shapes.txt")
@@ -136,6 +146,20 @@ def clamp_speeds(pat, vmax, rid, S):
         arr = tcur + new[i]; dwell = pat[i + 1][2] - pat[i + 1][1]
         out.append([pat[i + 1][0], arr, arr + dwell, pat[i + 1][3]]); tcur = arr + dwell
     return out
+
+def insert_stop(pat, pts, a, b, sid, dwell, rid, S):
+    """Add stop sid between consecutive stops a and b (either order). pts: shape [(lon, lat, dist)]."""
+    for i in range(len(pat) - 1):
+        p, q = pat[i], pat[i + 1]
+        if {p[0], q[0]} != {a, b}: continue
+        d, err = project(pts, coords[sid], p[3])
+        if not p[3] < d < q[3]: raise ValueError(f"{rid}: {S[sid]} doesn't fall between {S[p[0]]} and {S[q[0]]}")
+        arr = p[2] + round((q[1] - p[2]) * (d - p[3]) / (q[3] - p[3]))
+        new = [sid, arr, arr + dwell, round(d)]
+        rest = [[x[0], x[1] + dwell, x[2] + dwell, x[3]] for x in pat[i + 1:]]
+        note(f"{rid}: added {S[sid]} between {S[p[0]]} and {S[q[0]]} ({err:.0f} m from the track, +{dwell} s dwell)")
+        return pat[:i + 1] + [new] + rest
+    return pat
 
 def retime(pat, factors, vmax):
     """Scale the running time of each segment (a, b) in factors; dwells are kept, no segment beats tmin."""
@@ -229,6 +253,8 @@ for _, ro in r.iterrows():
         pts = [(round(x, 5), round(y, 5), round(d)) for x, y, d in full]
     else:
         pts = [(round(x.shape_pt_lon, 5), round(x.shape_pt_lat, 5), round(x.shape_dist_traveled)) for x in shp.itertuples()]
+    for ln, a, b, sid, dwell, src in STOP_INSERTS:
+        if ln == line: pat = insert_stop(pat, pts, a, b, sid, dwell, rid, names)
     pat = clamp_speeds(pat, LINE_VMAX.get(line, VMAX_DEFAULT), rid, names)
     pts = rdp(pts, 0.00004)
     svc = sorted(tr.service_id.unique().tolist())
