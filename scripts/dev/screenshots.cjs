@@ -1,10 +1,12 @@
-// Phone screenshots of Maptro. Serves files via page.route (local http is blocked) and, because the sandbox
+// Phone screenshots of Maptro (iPhone 14 Pro size).
+// Usage: npm i maplibre-gl@4.7.1 geojson-vt@3 vt-pbf@3, then NODE_PATH=<that folder>/node_modules node scripts/dev/screenshots.cjs . docs/screenshots
+// Serves files via page.route (local http is blocked) and, because the sandbox
 // cannot reach OpenFreeMap, answers tile requests with stand-in vector tiles built from a few hand-placed shapes.
 const { chromium, devices } = require('playwright');
 const fs = require('fs'), path = require('path');
 const geojsonvt = require('geojson-vt'), vtpbf = require('vt-pbf');
 const REPO = process.argv[2], OUT = process.argv[3];
-const ML = path.join(__dirname, 'node_modules/maplibre-gl/dist/');
+const ML = path.join(path.dirname(require.resolve('maplibre-gl/package.json')), 'dist/');
 const ring = (cx, cy, r, n = 48) => { const p = []; for (let i = 0; i <= n; i++) { const a = i / n * 2 * Math.PI; p.push([cx + r * Math.cos(a) * 1.14, cy + r * Math.sin(a)]); } return p; };
 const yam = [[77.235,28.75],[77.232,28.70],[77.245,28.66],[77.25,28.62],[77.265,28.58],[77.28,28.54],[77.30,28.50]];
 const band = (l, w) => [...l.map(p => [p[0]-w, p[1]]), ...l.slice().reverse().map(p => [p[0]+w, p[1]]), [l[0][0]-w, l[0][1]]];
