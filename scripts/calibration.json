@@ -1,0 +1,19 @@
+{
+  "_about": "End-to-end ride times used to scale the 2023 feed's running times, line by line. Each entry names feed stop_ids. The build scales running times (not the 20 s dwells) on every segment between `from` and `to`, in both directions and on every route that uses those segments, so short workings and branches match too. No segment goes faster than build.tmin allows. Trip start times stay as published, so headways are unchanged. `stops` is the number of stops Google counts (stations after the first). An entry with `hold` is skipped and the reason printed.",
+  "source": "Google Maps, 24 Nov 2026 11:00",
+  "source_note": "Google Maps transit directions with the departure set to Tuesday 24 Nov 2026 11:00, end to end in one direction, read by pranjal on 23 Nov 2026",
+  "lines": [
+    {"line": "RED", "label": "Red: Rithala to Shaheed Sthal (New Bus Adda)", "from": 21, "to": 225, "stops": 28, "minutes": 68},
+    {"line": "YELLOW", "label": "Yellow: Samaypur Badli to Millennium City Centre", "from": 36, "to": 71, "stops": 36, "minutes": 82},
+    {"line": "BLUE", "label": "Blue: Dwarka Sector 21 to Noida Electronic City", "from": 121, "to": 238, "stops": 49, "minutes": 103},
+    {"line": "BLUE", "label": "Blue branch: Yamuna Bank to Vaishali", "from": 89, "to": 72, "stops": 7, "minutes": 16},
+    {"line": "GREEN", "label": "Green: Inderlok to Brigadier Hoshiar Singh", "from": 13, "to": 202, "stops": 21, "minutes": 44,
+     "hold": "Google counts 21 stops; the feed has 20 (Inderlok, Ashok Park Main, Punjabi Bagh ... Brigadier Hoshiyar Singh). Check Google's expanded stop list before applying."},
+    {"line": "GREEN", "label": "Green branch: Kirti Nagar to Ashok Park Main", "from": 100, "to": 34, "stops": 2, "minutes": 5},
+    {"line": "VIOLET", "label": "Violet: Kashmere Gate to Raja Nahar Singh", "from": 8, "to": 220, "stops": 33, "minutes": 80},
+    {"line": "MAGENTA", "label": "Magenta: Krishna Park Extension to Botanical Garden", "stops": 25, "minutes": 71,
+     "hold": "Starts on the estimated Krishna Park Extension section. The map already takes 71.9 min end to end (25 stops), within a minute of Google, so nothing is changed."},
+    {"line": "ORANGE/AIRPORT", "label": "Airport: New Delhi to Yashobhoomi Dwarka Sector 25", "stops": 5, "minutes": 21,
+     "hold": "Google counts 5 stops; the map has 6 (New Delhi, Shivaji Stadium, Dhaula Kuan, Delhi Aerocity, IGI Airport, Dwarka Sector 21, Yashobhoomi). Check which station Google skips before applying. The map takes 29.6 min; the feed predates the 120 km/h upgrade of 17 Sep 2023."}
+  ]
+}

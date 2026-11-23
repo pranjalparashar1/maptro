@@ -6,6 +6,7 @@ Every Delhi Metro train drawn where DMRC's published timetable says it should be
 
 ## Data
 - DMRC static GTFS from Delhi's Open Transit Data portal (otd.delhi.gov.in): 262 stations, 36 routes, last updated Aug 2023, calendar expired 31 Dec 2025. The map ignores the expiry and runs the weekday timetable every day.
+- Running times are scaled per line to Google Maps end-to-end ride times (24 Nov 2026, 11:00), from `scripts/calibration.json`. The build prints each change.
 - Missing from the feed: Airport Line to Yashobhoomi Dwarka Sec 25, Magenta to Krishna Park Extension, Magenta Deepali Chowk–Majlis Park and Pink Majlis Park–Maujpur (Mar 2026).
 
 ## Rebuild

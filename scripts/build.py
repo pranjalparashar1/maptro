@@ -17,12 +17,17 @@ Fixes applied (each is printed when the build runs):
      could manage (top speed LINE_VMAX, accel/brake ACCEL) is lengthened to
      that minimum, and the time is taken from slack in the trip's other
      segments, so trip start and end times stay as published.
+  5. Run times: the feed's running times are scaled line by line so end-to-end
+     rides match published ride times (calibration.json, from Google Maps).
+     See calibrate() below.
 Estimated sections (Phase 4 openings not in the feed) come from phase4.json,
-see scripts/phase4.py.
+see scripts/phase4.py. They take their speeds from the uncalibrated feed.
 """
-import pandas as pd, json, math, os, sys
+import pandas as pd, json, math, os, sys, copy
 D = sys.argv[1] if len(sys.argv) > 1 else "DMRC_GTFS"
-P4 = sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "phase4.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+P4 = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "phase4.json")
+CAL = os.path.join(HERE, "calibration.json")
 OUT = "data.json"
 
 SERVICE_AS_DAILY = {"R_RS_R"}
@@ -132,6 +137,51 @@ def clamp_speeds(pat, vmax, rid, S):
         out.append([pat[i + 1][0], arr, arr + dwell, pat[i + 1][3]]); tcur = arr + dwell
     return out
 
+def retime(pat, factors, vmax):
+    """Scale the running time of each segment (a, b) in factors; dwells are kept, no segment beats tmin."""
+    out = [list(pat[0])]
+    for p, q in zip(pat, pat[1:]):
+        run = q[1] - p[2]; f = factors.get((p[0], q[0]))
+        if f is not None: run = max(round(run * f), math.ceil(tmin(q[3] - p[3], vmax)))
+        arr = out[-1][2] + run
+        out.append([q[0], arr, arr + q[2] - q[1], q[3]])
+    return out
+
+def calibrate(routes, cfg, S):
+    """Scale running times between two stops to a published ride time, per line and direction.
+    The factor is solved on the longest route that runs from `from` to `to` (or back), then
+    applied to those segments on every route of the line. Returns before/after rows."""
+    rows = []
+    for c in cfg["lines"]:
+        if "hold" in c:
+            print(f"calibration held: {c['label']}: {c['hold']}"); continue
+        vmax = LINE_VMAX.get(c["line"], VMAX_DEFAULT); line = [r for r in routes if r["line"] == c["line"]]
+        for a, b in ((c["from"], c["to"]), (c["to"], c["from"])):
+            def span(r):
+                ids = [p[0] for p in r["pat"]]
+                return (ids.index(a), ids.index(b)) if a in ids and b in ids and ids.index(a) < ids.index(b) else None
+            ref = max((r for r in line if span(r)), key=lambda r: len(r["pat"]), default=None)
+            if ref is None: raise ValueError(f"calibration: no {c['line']} route runs {S[a]} to {S[b]}")
+            i, j = span(ref); seg = [(ref["pat"][k][0], ref["pat"][k + 1][0]) for k in range(i, j)]
+            if j - i != c["stops"]:
+                note(f"calibration: {c['label']}: source counts {c['stops']} stops, the map has {j - i}")
+            ride = lambda pat: pat[j][1] - pat[i][2]
+            before = ride(ref["pat"]); target = c["minutes"] * 60
+            lo, hi = 0.3, 3.0  # bisect on the factor; tmin floors make the ride time piecewise linear in it
+            for _ in range(60):
+                f = (lo + hi) / 2
+                if ride(retime(ref["pat"], {k: f for k in seg}, vmax)) < target: lo = f
+                else: hi = f
+            fac = {k: f for k in seg}; n = 0
+            for r in line:
+                if any(k in fac for k in zip([p[0] for p in r["pat"]], [p[0] for p in r["pat"]][1:])):
+                    r["pat"] = retime(r["pat"], fac, vmax); n += 1
+            after = ride(ref["pat"])
+            note(f"{ref['id']}: {S[a]} to {S[b]} {before / 60:.1f} -> {after / 60:.1f} min "
+                 f"(running times x{f:.3f}, {n} route(s); {cfg['source']}: {c['minutes']} min)")
+            rows.append((c["label"], ref["id"], j - i, c["stops"], before, after, c["minutes"]))
+    return rows
+
 def rdp(pts, eps):
     if len(pts) < 3: return pts
     (x1, y1, _), (x2, y2, _) = pts[0], pts[-1]; dx, dy = x2 - x1, y2 - y1; L = math.hypot(dx, dy) or 1e-12
@@ -188,6 +238,9 @@ for _, ro in r.iterrows():
                        shape=[list(p) for p in pts], svc=svc))
 
 stops = {k: [names[k], round(coords[k][0], 5), round(coords[k][1], 5)] for k in coords}
+ROUTES_UNCALIBRATED = copy.deepcopy(routes)  # phase4 takes line speeds from these
+if os.path.exists(CAL):
+    calibrate(routes, json.load(open(CAL)), names)
 
 meta = dict(feed="DMRC GTFS, Delhi Open Transit Data, updated 10 Aug 2023", fixes=notes)
 if os.path.exists(P4):
