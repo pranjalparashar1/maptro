@@ -65,10 +65,12 @@
       "label": "Pink Line: Majlis Park to Maujpur-Babarpur, closing the ring",
       "line": "PINK", "official_km": 12.32, "opened": "2026-03-08", "shape": "pink_ring",
       "stops": [173, "burari", "jharoda_majra", "jagatpur_wazirabad", "nanaksar_sonia_vihar", "khajuri_khas", "bhajanpura", "yamuna_vihar", 215],
+      "calibrate": {"from": 173, "to": "yamuna_vihar", "minutes": 20},
       "timing": {"continues": "P_MS_R", "every": 1},
       "reverse_timing": {"departs": "P_MS", "at": 215, "every": 1},
-      "basis": "Pink trains now run round the ring in both directions (Wikipedia). Trains reaching Majlis Park are assumed to carry on to Maujpur-Babarpur, and trains reaching Maujpur-Babarpur from Welcome are assumed to carry on round the ring via Yamuna Vihar. The feed's own Pink trains still also run to Shiv Vihar. Soorghat is built but not open, so trains pass it.",
+      "basis": "Pink trains now run round the ring in both directions (Wikipedia). Trains reaching Majlis Park are assumed to carry on to Maujpur-Babarpur, and trains reaching Maujpur-Babarpur from Welcome are assumed to carry on round the ring via Yamuna Vihar. The feed's own Pink trains still also run to Shiv Vihar. Soorghat is built but not open, so trains pass it (Google Maps also counts 7 stops Majlis Park to Yamuna Vihar). Run times are scaled so Majlis Park to Yamuna Vihar takes 20 minutes, as Google Maps shows.",
       "sources": [
+        "Google Maps transit directions, screenshot shared by pranjal 23 Nov 2026: Majlis Park to Yamuna Vihar, 7 stops, 20 min (used to calibrate run times)",
         "DMRC Annual Report 2024-25 (published Nov 2025), Directors' Report §2.2-2.3: Majlis Park - Maujpur Babarpur route length 12.32 km, under construction at 31.03.2025",
         "ThePrint (PTI), 'DMRC begins operations on two new metro corridors', 8 Mar 2026",
         "Tribune India, 'DMRC begins services on two newly inaugurated corridors', 9 Mar 2026",

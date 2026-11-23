@@ -87,6 +87,22 @@ def build(cfg, stops, routes_feed, helpers):
                     run = (d - pat[-1][3])
                     t = pat[-1][2] + max(round(run / vavg), round(B.tmin(run, vmax) + 0.5))
                 pat.append([i, t, t + DWELL, round(d)]); dmin = d
+            cal = sec.get("calibrate")
+            if cal:  # scale running times so a published ride time between two stations is matched
+                a_id, b_id = [x if isinstance(x, int) else sid[x] for x in (cal["from"], cal["to"])]
+                ia, ib = sorted((seq.index(a_id), seq.index(b_id)))
+                run_ab = sum(pat[k + 1][1] - pat[k][2] for k in range(ia, ib))
+                f = (cal["minutes"] * 60 - (pat[ib][1] - pat[ia][2] - run_ab)) / run_ab
+                out_t, prev = [], None
+                for k, q in enumerate(pat):
+                    if k:
+                        run = q[3] - pat[k - 1][3]
+                        tt = prev[2] + max(round((q[1] - pat[k - 1][2]) * f), round(B.tmin(run, vmax) + 0.5))
+                    else:
+                        tt = 0
+                    prev = [q[0], tt, tt + DWELL, q[3]]; out_t.append(prev)
+                pat = out_t
+                print(f"calibrated {sec['key']}{direction}: running times x{f:.3f} to match {cal['minutes']} min")
             starts = sorted(_starts(rule, pat, feed))
             first, last = allstops[seq[0]][0], allstops[seq[-1]][0]
             out.append(dict(id=f"E_{sec['key']}{direction}", line=sec["line"], name=f"{first} to {last}", pat=pat, starts=starts,
