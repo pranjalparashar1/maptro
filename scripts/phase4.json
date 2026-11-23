@@ -26,6 +26,7 @@
       "reverse_timing": {"feeds": "O_DN", "every": 1},
       "basis": "Every Airport Line train is assumed to run through to Yashobhoomi, as the line was extended rather than given a shuttle.",
       "sources": [
+        "DMRC journey planner, delhimetrorail.com/map, checked by pranjal 23 Nov 2026: Dwarka Sector 21 to Yashobhoomi 2 min (map: 2.1 min)",
         "PMO, 'PM inaugurates extension of Airport Metro Express Line ... to Yashobhoomi Dwarka Sector 25', 17 Sep 2023, pmindia.gov.in",
         "Wikipedia, Yashobhoomi Dwarka Sector - 25 metro station, read 23 Nov 2026"
       ]
