@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Delhi Metro, by timetable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@600;800&family=Red+Hat+Text:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a transit control-room display — calm, exact, honest about what it knows.
+   IDEA: the line-diagram board in a metro operations centre, trains as moving lights.
+   PICTURE: the full network drawn from DMRC's own shapes, every scheduled train a glowing dot.
+   COLOUR and TYPE: night navy ground in both themes, DMRC line colours as the only hues; Red Hat Display/Text.
+   LAYOUT: map first and large; line counts beside it; field-check tool and data audit below. */
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2e;--line:#22304d;--ink:#e8edf7;--mute:#93a0ba;--acc:#f5c400}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Red Hat Text",system-ui,sans-serif;overflow-x:clip}
+h1,h2{font-family:"Red Hat Display",system-ui,sans-serif;line-height:1.05;text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,4vw,44px);font-weight:800}h2{font-size:24px;font-weight:800;margin-bottom:12px}
+.band{padding:clamp(20px,3vw,40px) max(4vw,16px)}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between;padding-bottom:12px}
+.sub{color:var(--mute);margin:6px 0 0;max-width:70ch}
+.clock{font:800 clamp(30px,5vw,48px)/1 "Red Hat Display";font-variant-numeric:tabular-nums;white-space:nowrap}
+.clock small{display:block;font:500 13px "Red Hat Text";color:var(--mute);margin-top:4px;text-align:right}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;padding:0 max(4vw,16px)}
+.fig{position:relative;height:min(72vh,680px);min-height:380px;background:#070b16;border:1px solid var(--line);border-radius:14px;overflow:hidden;touch-action:none}
+.fig canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab}
+.tag{position:absolute;left:12px;top:12px;background:#000a;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--mute)}
+.tag b{color:var(--acc)}
+.zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+.tip{position:absolute;pointer-events:none;background:#0b1020f2;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;max-width:240px;display:none;z-index:2}
+button,select,input{font:inherit;font-size:16px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:0 14px}
+button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button[aria-pressed=true]{background:var(--acc);color:#111;border-color:var(--acc);font-weight:700}
+.zoom button{width:44px;padding:0;font-size:22px}
+.ctrl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px max(4vw,16px) 0}
+.ctrl input[type=range]{flex:1 1 220px;padding:0;accent-color:var(--acc)}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;align-self:start}
+aside h3{margin:0 0 8px;font:700 15px "Red Hat Text";color:var(--mute)}
+.ln{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;border:0;background:none;padding:2px 4px;border-radius:8px;text-align:left}
+.ln i{width:14px;height:14px;border-radius:50%;flex:none}.ln span{flex:1}.ln b{font-variant-numeric:tabular-nums}
+.ln.off{opacity:.35}
+.total{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:8px;padding-top:8px;font-weight:700}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.row select{flex:1 1 200px}
+.big{font:800 40px/1 "Red Hat Display";font-variant-numeric:tabular-nums}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin:12px 0}.stats div small{display:block;color:var(--mute);font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ul{padding-left:20px;margin:6px 0}li{margin:4px 0}.mute{color:var(--mute);font-size:14px}
+.warn{border-left:3px solid var(--acc);padding-left:12px}
+.scroll{overflow-x:auto;max-height:260px}
+@media(max-width:860px){.main{grid-template-columns:minmax(0,1fr)}.fig{height:62vh}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal}.stack td:empty{display:none}}
+</style><script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script></head><body>
+
+<header class="band top">
+  <div><h1>Delhi Metro, by timetable</h1>
+  <p class="sub">Every dot is a train where DMRC's published timetable says it should be right now. These are scheduled positions, not live ones: DMRC doesn't publish live train data.</p></div>
+  <div class="clock" id="clock">--:--:--<small id="mode">Live, India time</small></div>
+</header>
+
+<div class="main">
+  <div class="fig" id="fig"><canvas id="cv" aria-label="Map of Delhi Metro lines with scheduled train positions"></canvas>
+    <div class="tag">Positions: <b>scheduled</b> · DMRC GTFS, Aug 2023</div>
+    <div class="zoom"><button id="zin" aria-label="Zoom in">+</button><button id="zout" aria-label="Zoom out">−</button><button id="zfit" aria-label="Fit network" style="font-size:14px">fit</button></div>
+    <div class="tip" id="tip"></div>
+  </div>
+  <aside><h3>Trains running now, by line</h3><div id="lines"></div><div class="total"><span>All lines</span><span id="tot">0</span></div>
+  <p class="mute" style="margin:10px 0 0">Tap a line to hide it. Tap a train or station on the map for details.</p></aside>
+</div>
+
+<div class="ctrl">
+  <button id="live" aria-pressed="true">Live</button><button data-sp="10" aria-pressed="false">10×</button><button data-sp="60" aria-pressed="false">60×</button>
+  <input type="range" id="scrub" min="16200" max="88200" step="60" aria-label="Time of day">
+</div>
+
+<section class="band grid2">
+  <div class="card">
+    <h2>Check it against real trains</h2>
+    <p class="mute">On a platform, pick your station and direction, then tap the button as each train stops. Each tap is compared with the nearest scheduled arrival.</p>
+    <div class="row"><select id="fst" aria-label="Station"></select></div>
+    <div class="row"><select id="frt" aria-label="Direction"></select></div>
+    <div class="row"><button id="fgo" style="flex:1;background:var(--acc);color:#111;font-weight:700">Train arrived now</button><button id="fundo">Undo</button></div>
+    <div class="stats"><div><small>Logged</small><span class="big" id="fn">0</span></div><div><small>Median gap</small><span class="big" id="fmed">–</span></div><div><small>90% within</small><span class="big" id="fp90">–</span></div><div><small>Observed headway</small><span class="big" id="fhw">–</span></div></div>
+    <div class="scroll"><table class="stack"><thead><tr><th>Time</th><th>Station</th><th>Towards</th><th class="n">Gap</th></tr></thead><tbody id="flog"></tbody></table></div>
+    <div class="row"><button id="fcopy">Copy as CSV</button><button id="fclear">Clear log</button><span id="fmsg" class="mute" style="align-self:center"></span></div>
+    <p class="mute">Gap = your time minus the nearest scheduled arrival. A timetable can't say <i>which</i> train you saw, so gaps can never exceed half the headway. Compare the observed headway with the timetable's too. The log stays only in this browser.</p>
+  </div>
+  <div class="card">
+    <h2>What the official feed gets wrong</h2>
+    <p class="warn">The DMRC feed on otd.delhi.gov.in was last updated 10 Aug 2023 and expired on 31 Dec 2025. The map ignores the expiry and runs the weekday timetable every day.</p>
+    <h3 style="margin:14px 0 4px">Sections open now but missing from the feed</h3>
+    <ul>
+      <li>Airport Line: Dwarka Sec 21 to Yashobhoomi Dwarka Sec 25 (opened 17 Sep 2023)</li>
+      <li>Magenta: Janakpuri West to Krishna Park Extension (Jan 2025)</li>
+      <li>Magenta: Deepali Chowk to Majlis Park, 7 stations (8 Mar 2026)</li>
+      <li>Pink: Majlis Park to Maujpur-Babarpur, closing the ring with 8 new stations including Burari, Jharoda Majra, Jagatpur Village, Soorghat, Nanaksar-Sonia Vihar, Khajuri Khas, Bhajanpura and Yamuna Vihar (8 Mar 2026)</li>
+    </ul>
+    <h3 style="margin:14px 0 4px">Signs the timetable is a model, not an operating plan</h3>
+    <ul>
+      <li>Every trip on a route has exactly the same running times all day: rush hour takes as long as 11 pm.</li>
+      <li>Every stop has a 20-second dwell, including interchanges like Rajiv Chowk.</li>
+      <li>There's no Sunday service. "Saturday" holds only 59 Red Line trips, which look like mislabelled weekday trips.</li>
+      <li>Red Line Rithala → Dilshad Garden has just 13 trips (the reverse has 159).</li>
+      <li>Yellow Line Adarsh Nagar → Jahangirpuri implies 196 km/h, and Green Line Mundka → MIA implies 104 km/h. Trains run at about 80.</li>
+      <li>Off-peak and late-evening headways are identical on every line, and the feed puts more Yellow Line trains on the track at 11:30 pm (72) than at 9 am (39).</li>
+    </ul>
+    <p class="mute">The geometry is good: stations sit a median of 16 m from the drawn track (200 m at worst).</p>
+  </div>
+</section>
+
+<section class="band grid2" style="padding-top:0">
+  <div class="card">
+    <h2>Field protocol</h2>
+    <ol>
+      <li><b>Stations (one per line, plus one terminal):</b> Rajiv Chowk (Blue), Kashmere Gate (Red), Hauz Khas (Yellow), Botanical Garden (Magenta), Lajpat Nagar (Pink), Mandi House (Violet), Ashok Park Main (Green), Dhaula Kuan (Airport), and a terminal such as Dwarka Sec 21 where the timetable starts.</li>
+      <li><b>Windows:</b> 08:30–10:00 and 18:00–19:30 (peak), 13:00–14:00 (off-peak), 22:00–23:00 (late). That's 30 minutes per platform per window, both directions.</li>
+      <li><b>What to log:</b> the moment the doors open. Tap "Train arrived now" with this page's clock set to Live. Phone clocks are network-synced to within about a second, which is plenty.</li>
+      <li><b>Sample size:</b> about 30 arrivals per line and time window. That gives a stable median and a rough 90th percentile.</li>
+      <li><b>Metrics:</b> per line and window, the median and 90th percentile of |gap|, and observed versus scheduled headway. Gaps can't exceed half the headway, so headway error is the stronger test. At a terminal, also note whether the first train of the day leaves at the scheduled time. That's the only point where the timetable's phase can be checked directly.</li>
+      <li><b>Pass bar:</b> the map is "good enough" for a line when its median gap is under a quarter of the headway and observed headway is within 20% of scheduled.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h2>Routes to real live data</h2>
+    <table class="stack"><thead><tr><th>Source</th><th>What it has</th><th>How to get it</th></tr></thead><tbody>
+      <tr><td>Delhi Transport Stack / OTD (otd.delhi.gov.in)</td><td>Metro: static schedule only. Buses: live GTFS-RT positions.</td><td>Free registration for a key. Ask the Transport Dept / IIIT-Delhi (Centre for Sustainable Mobility) whether DMRC realtime is on their roadmap. They run the 2026 Transport Stack hackathon.</td></tr>
+      <tr><td>DMRC directly</td><td>Train positions from signalling (CBTC/ATS) and the next-train data shown on platform boards</td><td>Formal data-sharing request to DMRC's IT/Business Development. An MoU is the realistic route, as IIIT-Delhi and MapmyIndia did.</td></tr>
+      <tr><td>MapmyIndia (Mappls)</td><td>DMRC real-time data under a commercial agreement</td><td>Commercial API licence. Ask specifically whether metro realtime is exposed to API customers.</td></tr>
+      <tr><td>DMRC app backend</td><td>Current station list (including Phase 4), routes, fares, first and last trains. No live positions.</td><td>Unofficial and undocumented. Good for refreshing the station list, but don't build on it.</td></tr>
+      <tr><td>RTI application</td><td>The current Working Time Table (actual run times and headways by hour)</td><td>File under the RTI Act to DMRC. This alone would fix most of the errors listed above.</td></tr>
+    </tbody></table>
+  </div>
+</section>
+
+<script>{
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d'),fig=$('fig'),tip=$('tip');
+let D=null,R=[],hidden=new Set(),speed=0,simT=null,lastReal=performance.now();
+let view={cx:77.2,cy:28.62,z:1};const K=Math.cos(28.62*Math.PI/180);
+const nowIST=()=>{const d=new Date();return((d.getUTCHours()*3600+d.getUTCMinutes()*60+d.getUTCSeconds()+d.getUTCMilliseconds()/1000)+19800)%86400};
+const fmt=s=>{s=((Math.floor(s)%86400)+86400)%86400;return[s/3600|0,(s%3600)/60|0,s%60].map(v=>String(v).padStart(2,'0')).join(':')};
+const hm=s=>fmt(s).slice(0,5);
+function px(lon,lat){const W=cv.clientWidth,H=cv.clientHeight,sc=view.z*Math.min(W,H)/0.75;return[W/2+(lon-view.cx)*K*sc,H/2-(lat-view.cy)*sc]}
+function unpx(x,y){const W=cv.clientWidth,H=cv.clientHeight,sc=view.z*Math.min(W,H)/0.75;return[(x-W/2)/(K*sc)+view.cx,view.cy-(y-H/2)/sc]}
+function fit(){let a=[1e9,1e9,-1e9,-1e9];for(const s of Object.values(D.stops)){a[0]=Math.min(a[0],s[1]);a[1]=Math.min(a[1],s[2]);a[2]=Math.max(a[2],s[1]);a[3]=Math.max(a[3],s[2])}
+  const W=cv.clientWidth,H=cv.clientHeight;view.cx=(a[0]+a[2])/2;view.cy=(a[1]+a[3])/2;view.z=0.9*Math.min(W/((a[2]-a[0])*K),H/(a[3]-a[1]))*0.75/Math.min(W,H)}
+function posAt(r,d){const s=r.shape;let lo=0,hi=s.length-1;if(d<=s[0][2])return s[0];if(d>=s[hi][2])return s[hi];
+  while(hi-lo>1){const m=(lo+hi)>>1;if(s[m][2]<=d)lo=m;else hi=m}const a=s[lo],b=s[hi],f=(d-a[2])/((b[2]-a[2])||1);return[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]}
+function trains(t){const out=[];for(const r of R){if(hidden.has(r.line))continue;const p=r.pat,dur=p[p.length-1][1];
+  for(const tt of [t,t+86400]){for(const s0 of r.starts){const e=tt-s0;if(e<0||e>dur)continue;let i=0;while(i<p.length-1&&p[i+1][1]<=e)i++;
+    let d,at=null,next;if(e<=p[i][2]){d=p[i][3];at=p[i][0];next=p[i+1]||p[i]}else{const a=p[i],b=p[i+1],f=(e-a[2])/((b[1]-a[2])||1);d=a[3]+(b[3]-a[3])*f;next=b}
+    out.push({r,d,at,next,eta:s0+next[1],s0,ll:posAt(r,d)})}}}return out}
+function lineOf(r){return D.colors[r.line]||'#fff'}
+let lastTrains=[];
+function draw(){const W=cv.clientWidth,H=cv.clientHeight,dpr=devicePixelRatio||1;if(cv.width!==W*dpr){cv.width=W*dpr;cv.height=H*dpr}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);const t=curT();
+  ctx.lineCap='round';ctx.lineJoin='round';const lw=Math.max(2,Math.min(6,2.2*view.z));
+  for(const r of R){if(hidden.has(r.line))continue;ctx.strokeStyle=lineOf(r);ctx.globalAlpha=.55;ctx.lineWidth=lw;ctx.beginPath();r.shape.forEach((p,i)=>{const[x,y]=px(p[0],p[1]);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke()}
+  ctx.globalAlpha=1;const sr=Math.max(1.5,Math.min(4,1.4*view.z));ctx.fillStyle='#0b1020';ctx.strokeStyle='#c9d3e6';ctx.lineWidth=1;
+  for(const[k,s]of Object.entries(D.stops)){const[x,y]=px(s[1],s[2]);if(x<-9||y<-9||x>W+9||y>H+9)continue;ctx.beginPath();ctx.arc(x,y,sr,0,7);ctx.fill();ctx.stroke()}
+  if(view.z>3.2){ctx.font='500 12px "Red Hat Text"';ctx.fillStyle='#c9d3e6';for(const s of Object.values(D.stops)){const[x,y]=px(s[1],s[2]);if(x>0&&y>0&&x<W&&y<H)ctx.fillText(s[0],x+6,y-6)}}
+  lastTrains=trains(t);const tr=Math.max(3.5,Math.min(7,2.8*view.z)),cnt={};
+  for(const o of lastTrains){cnt[o.r.line]=(cnt[o.r.line]||0)+1;const[x,y]=px(o.ll[0],o.ll[1]);ctx.fillStyle=lineOf(o.r);ctx.shadowColor=lineOf(o.r);ctx.shadowBlur=10;ctx.beginPath();ctx.arc(x,y,tr,0,7);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke()}
+  renderCounts(cnt);$('clock').firstChild.nodeValue=fmt(t);if(!dragging)$('scrub').value=t<16200?t+86400:t}
+function curT(){const n=performance.now();if(speed===0)return nowIST();simT+=(n-lastReal)/1000*speed;lastReal=n;return simT%86400}
+const LN=()=>[...new Set(R.map(r=>r.line))];
+function renderCounts(c){const el=$('lines');if(!el.children.length){el.innerHTML=LN().map(l=>`<button class="ln" data-l="${l}"><i style="background:${D.colors[l]}"></i><span>${l==='ORANGE/AIRPORT'?'Airport Express':l==='RAPID'?'Rapid Metro':l[0]+l.slice(1).toLowerCase()}</span><b>0</b></button>`).join('');
+  el.onclick=e=>{const b=e.target.closest('.ln');if(!b)return;const l=b.dataset.l;hidden.has(l)?hidden.delete(l):hidden.add(l);b.classList.toggle('off',hidden.has(l))}}
+  let tot=0;for(const b of el.children){const n=c[b.dataset.l]||0;tot+=n;b.querySelector('b').textContent=n}$('tot').textContent=tot}
+function loop(){draw();requestAnimationFrame(loop)}
+/* interaction */
+let dragging=false,drag=null,pts=new Map();
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.offsetX,e.offsetY]);drag={x:e.offsetX,y:e.offsetY,cx:view.cx,cy:view.cy,moved:false,d0:null,z0:view.z}});
+cv.addEventListener('pointermove',e=>{if(!drag){hover(e.offsetX,e.offsetY,false);return}pts.set(e.pointerId,[e.offsetX,e.offsetY]);
+  if(pts.size===2){const[a,b]=[...pts.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(!drag.d0)drag.d0=d;view.z=Math.max(.6,Math.min(40,drag.z0*d/drag.d0));drag.moved=true;return}
+  const dx=e.offsetX-drag.x,dy=e.offsetY-drag.y;if(Math.abs(dx)+Math.abs(dy)>4)drag.moved=true;const sc=view.z*Math.min(cv.clientWidth,cv.clientHeight)/0.75;view.cx=drag.cx-dx/(K*sc);view.cy=drag.cy+dy/sc});
+cv.addEventListener('pointerup',e=>{pts.delete(e.pointerId);if(drag&&!drag.moved)hover(e.offsetX,e.offsetY,true);if(!pts.size)drag=null});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.offsetX,e.offsetY,e.deltaY<0?1.25:0.8)},{passive:false});
+function zoomAt(x,y,f){const[a,b]=unpx(x,y);view.z=Math.max(.6,Math.min(40,view.z*f));const[c,d]=unpx(x,y);view.cx+=a-c;view.cy+=b-d}
+$('zin').onclick=()=>zoomAt(cv.clientWidth/2,cv.clientHeight/2,1.5);$('zout').onclick=()=>zoomAt(cv.clientWidth/2,cv.clientHeight/2,1/1.5);$('zfit').onclick=fit;
+function hover(x,y,click){let best=null,bd=click?22:12;for(const o of lastTrains){const[a,b]=px(o.ll[0],o.ll[1]),d=Math.hypot(a-x,b-y);if(d<bd){bd=d;best=o}}
+  let html='';if(best){const n=D.stops[best.next[0]][0],to=D.stops[best.r.pat[best.r.pat.length-1][0]][0];html=`<b style="color:${lineOf(best.r)}">${best.r.line==='ORANGE/AIRPORT'?'Airport Express':best.r.line[0]+best.r.line.slice(1).toLowerCase()} Line</b> towards ${to}<br>${best.at!=null?'At '+D.stops[best.at][0]:'Next: '+n+' at '+hm(best.eta)}<br><span class="mute">Left ${D.stops[best.r.pat[0][0]][0]} at ${hm(best.s0)} · scheduled</span>`}
+  else{for(const[k,s]of Object.entries(D.stops)){const[a,b]=px(s[1],s[2]),d=Math.hypot(a-x,b-y);if(d<bd){bd=d;best=k}}if(best)html=`<b>${D.stops[best][0]}</b><br><span class="mute">Next: ${nextAt(+best).join('<br>')||'no more trains today'}</span>`}
+  if(!html){tip.style.display='none';return}tip.innerHTML=html;tip.style.display='block';const W=fig.clientWidth;tip.style.left=Math.min(x+12,W-250)+'px';tip.style.top=(y+12)+'px'}
+function nextAt(sid){const t=curT(),res=[];for(const r of R){const p=r.pat.find(q=>q[0]===sid);if(!p||p===r.pat[r.pat.length-1])continue;const s=r.starts.map(s0=>s0+p[1]).filter(a=>a>=t).sort((a,b)=>a-b)[0];if(s!=null)res.push([s,`${hm(s)} to ${D.stops[r.pat[r.pat.length-1][0]][0]}`])}return res.sort((a,b)=>a[0]-b[0]).slice(0,4).map(x=>x[1])}
+/* time controls */
+const sb=[...document.querySelectorAll('[data-sp]')];
+function setSpeed(s){if(simT==null||speed===0)simT=nowIST();speed=s;lastReal=performance.now();$('live').setAttribute('aria-pressed',s===0);sb.forEach(b=>b.setAttribute('aria-pressed',+b.dataset.sp===s));$('mode').textContent=s===0?'Live, India time':`Replay at ${s}×`}
+$('live').onclick=()=>setSpeed(0);sb.forEach(b=>b.onclick=()=>setSpeed(+b.dataset.sp));
+$('scrub').addEventListener('input',e=>{dragging=true;if(speed===0)setSpeed(1);simT=+e.target.value%86400});$('scrub').addEventListener('change',()=>dragging=false);
+/* field log */
+let log=[];try{log=JSON.parse(localStorage.getItem('dm-field')||'[]')}catch(e){}
+const save=()=>{try{localStorage.setItem('dm-field',JSON.stringify(log))}catch(e){}};
+function fillRoutes(){const sid=+$('fst').value;$('frt').innerHTML=R.map((r,i)=>[r,i]).filter(([r])=>r.pat.slice(0,-1).some(p=>p[0]===sid)).map(([r,i])=>`<option value="${i}">${r.line==='ORANGE/AIRPORT'?'Airport':r.line[0]+r.line.slice(1).toLowerCase()} towards ${D.stops[r.pat[r.pat.length-1][0]][0]}</option>`).join('')}
+function sched(r,sid){const p=r.pat.find(q=>q[0]===sid);return r.starts.map(s=>(s+p[1])%86400)}
+$('fgo').onclick=()=>{const sid=+$('fst').value,ri=+$('frt').value,r=R[ri];if(!r)return;const t=nowIST();let best=1e9;for(const a of sched(r,sid)){let g=t-a;if(g>43200)g-=86400;if(g<-43200)g+=86400;if(Math.abs(g)<Math.abs(best))best=g}
+  log.push({t:Math.round(t),sid,ri,line:r.line,to:D.stops[r.pat[r.pat.length-1][0]][0],gap:Math.round(best),day:new Date().toISOString().slice(0,10)});save();renderLog()};
+$('fundo').onclick=()=>{log.pop();save();renderLog()};
+$('fclear').onclick=()=>{if($('fclear').dataset.sure){log=[];save();renderLog();delete $('fclear').dataset.sure;$('fclear').textContent='Clear log'}else{$('fclear').dataset.sure=1;$('fclear').textContent='Tap again to clear'}};
+$('fcopy').onclick=async()=>{const csv='date,time_ist,station,line,towards,gap_s\n'+log.map(l=>[l.day,fmt(l.t),D.stops[l.sid][0],l.line,l.to,l.gap].join(',')).join('\n');try{await navigator.clipboard.writeText(csv);$('fmsg').textContent='Copied'}catch(e){$('fmsg').textContent='Copy blocked by this viewer'}};
+function pct(a,q){if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.min(s.length-1,Math.floor(q*(s.length-1)+.5))]}
+function renderLog(){$('flog').innerHTML=log.slice().reverse().map(l=>`<tr><td>${fmt(l.t)}</td><td>${D.stops[l.sid][0]}</td><td>${l.to}</td><td class="n">${l.gap>0?'+':''}${l.gap} s</td></tr>`).join('');
+  const g=log.map(l=>Math.abs(l.gap));$('fn').textContent=log.length;const m=pct(g,.5),p=pct(g,.9);$('fmed').textContent=m==null?'–':m+' s';$('fp90').textContent=p==null?'–':p+' s';
+  const key=log.length?log[log.length-1].sid+'_'+log[log.length-1].ri:null,same=log.filter(l=>l.sid+'_'+l.ri===key).map(l=>l.t),hw=same.slice(1).map((t,i)=>t-same[i]).filter(x=>x>0&&x<1800);
+  const h=pct(hw,.5);$('fhw').textContent=h==null?'–':(h/60).toFixed(1)+' min'}
+/* boot */
+fetch('data.json').then(r=>r.json()).then(d=>{D=d;R=d.routes;new ResizeObserver(()=>{}).observe(cv);fit();
+  const used=new Set(R.flatMap(r=>r.pat.slice(0,-1).map(p=>p[0])));$('fst').innerHTML=Object.entries(D.stops).filter(([k])=>used.has(+k)).sort((a,b)=>a[1][0].localeCompare(b[1][0])).map(([k,s])=>`<option value="${k}">${s[0]}</option>`).join('');
+  const rc=Object.entries(D.stops).find(s=>s[1][0]==='Rajiv Chowk');if(rc)$('fst').value=rc[0];fillRoutes();$('fst').onchange=fillRoutes;renderLog();requestAnimationFrame(loop)})
+ .catch(()=>{$('mode').textContent='Could not load the timetable'});
+}</script>
+</body></html>
