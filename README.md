@@ -16,5 +16,13 @@ python3 scripts/build.py path/to/DMRC_GTFS   # writes data.json
 ```
 Then serve the folder (`python3 -m http.server`) and open index.html.
 
-## Checking it
-The page has a "Train arrived now" logger: stand on a platform, tap when each train stops, and it reports the gap to the nearest scheduled arrival plus the observed headway.
+## The page
+- `index.html` is the whole app, with no build step. It draws the lines, stations and trains with WebGL as a MapLibre GL custom layer over a CARTO dark basemap. MapLibre 4.7.1 comes from jsDelivr (unpkg as a second try). If neither loads, the same WebGL renderer runs on its own canvas with its own pan and pinch, just without the basemap.
+- Pick lines from the dropdown; only those lines, their stations and their trains are drawn. Station names appear by zoom level and never overlap. The choice is remembered in the browser.
+- Trains glide every frame (`requestAnimationFrame`, so 120 Hz on ProMotion phones) with a short trail behind them, and run on the left-hand side of the track when zoomed in. Tap a train for its next stop and Follow it; tap a station for its next departures. Tap the clock to run time at 10× or 60×.
+
+## Tests
+```
+node --test tests/*.test.mjs
+```
+They load the `/*<core>*/` block of index.html (all the timetable and position logic) and check it against data.json.
