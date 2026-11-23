@@ -50,10 +50,12 @@
       "label": "Magenta Line: Majlis Park to Deepali Chowk",
       "line": "MAGENTA", "official_km": 9.9, "opened": "2026-03-08", "shape": "magenta_north",
       "stops": [173, "bhalaswa", 38, "haiderpur_village", "uttari_pitampura", "madhuban_chowk", "deepali_chowk"],
+      "calibrate": {"from": 173, "to": "deepali_chowk", "minutes": 16},
       "timing": {"headway_like": "M_JB"},
       "reverse_timing": {"headway_like": "M_JB_R"},
-      "basis": "Runs as its own service, not through to Botanical Garden (Wikipedia). No published headway was found, so trains are spaced like the feed's Magenta Line timetable.",
+      "basis": "Runs as its own service, not through to Botanical Garden (Wikipedia). No published headway was found, so trains are spaced like the feed's Magenta Line timetable. Run times are scaled so Majlis Park to Deepali Chowk takes 16 minutes (6 stops), as Google Maps shows. DMRC's journey planner gives 9 minutes, which is faster than physically possible for 9.9 km, so it isn't used.",
       "sources": [
+        "Google Maps, 23 Nov 2026: transit directions screenshot shared by pranjal, Majlis Park to Deepali Chowk, 6 stops, 16 min (used to calibrate run times)",
         "ThePrint (PTI), 8 Mar 2026: 9.9 km",
         "ThePrint (PTI), 'DMRC begins operations on two new metro corridors', 8 Mar 2026",
         "Tribune India, 'DMRC begins services on two newly inaugurated corridors', 9 Mar 2026",
