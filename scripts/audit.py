@@ -73,3 +73,28 @@ if os.path.exists(J):
     print("data.json stop to shape m, median/90%/max:", round(float(np.median(off))), round(float(np.percentile(off, 90))), round(max(off)))
     print("data.json shape hairpins (<26 deg):", back, sorted(set(hp)))
     print("data.json build fixes:", len(dj.get('meta', {}).get('fixes', [])))
+    # Kinematics (index.html profile()): each run pulls away at ACCEL, cruises, brakes at DECEL, so its peak speed is
+    # above distance / time. Every peak must stay under the line's top speed; runs under CRAWL km/h are listed.
+    import ast  # build.py runs its build on import, so read its constants from the source
+    BC = {}
+    for node in ast.parse(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build.py')).read()).body:
+        if isinstance(node, ast.Assign):
+            names = [e.id for t in node.targets for e in (t.elts if isinstance(t, ast.Tuple) else [t]) if isinstance(e, ast.Name)]
+            if set(names) & {'ACCEL', 'LINE_VMAX', 'VMAX_DEFAULT'}:
+                v = ast.literal_eval(node.value); BC.update(zip(names, v) if len(names) > 1 else [(names[0], v)])
+    ACCEL, DECEL, LINE_VMAX, VMAX_DEFAULT = BC['ACCEL'], BC['DECEL'], BC['LINE_VMAX'], BC['VMAX_DEFAULT']
+    K, CRAWL = 1 / ACCEL + 1 / DECEL, 5
+    over, crawl, peaks = [], [], {}
+    for ro in dj['routes']:
+        p, top = ro['pat'], LINE_VMAX.get(ro['line'], VMAX_DEFAULT)
+        for a, b in zip(p, p[1:]):
+            L, T = b[3] - a[3], b[1] - a[2]
+            if L <= 0 or T <= 0: continue
+            q = T * T - 2 * K * L
+            v = ((T - math.sqrt(q)) / K if q >= 0 else float('inf')) * 3.6
+            peaks[ro['line']] = max(peaks.get(ro['line'], 0), v)
+            if v > top + 0.05: over.append(f"{ro['id']} {S[str(a[0])][0]} to {S[str(b[0])][0]}: {v:.0f} km/h over {top}")
+            if L / T * 3.6 < CRAWL: crawl.append(f"{ro['id']} {S[str(a[0])][0]} to {S[str(b[0])][0]} ({L} m in {T} s)")
+    print("data.json peak speed km/h by line:", {k: round(v) for k, v in sorted(peaks.items())})
+    print(f"data.json runs below {CRAWL} km/h:", len(crawl), crawl)
+    if over: sys.exit("data.json runs over their line's top speed:\n  " + "\n  ".join(over))

@@ -14,7 +14,7 @@ Fixes applied (each is printed when the build runs):
      are removed, and shape distances and stop positions are recomputed for
      any route that changed.
   4. Impossible speeds: a segment whose run time is shorter than a train
-     could manage (top speed LINE_VMAX, accel/brake ACCEL) is lengthened to
+     could manage (top speed LINE_VMAX, ACCEL away and DECEL braking) is lengthened to
      that minimum, and the time is taken from slack in the trip's other
      segments, so trip start and end times stay as published.
   5. Run times: the feed's running times are scaled line by line so end-to-end
@@ -22,6 +22,9 @@ Fixes applied (each is printed when the build runs):
      See calibrate() below.
   6. New stops: stations that opened after the feed, on lines it already has, are inserted
      from STOP_INSERTS (Punjabi Bagh West on Green), before calibration.
+  7. Dwells: the feed stops every train for 20 s everywhere. Interchanges get DWELL_INTERCHANGE
+     instead, and the extra time comes out of the two runs either side, so every other stop keeps
+     its time and calibrated rides are unchanged. See tier_dwells() below.
 Estimated sections (Phase 4 openings not in the feed) come from phase4.json,
 see scripts/phase4.py. They take their speeds from the uncalibrated feed.
 """
@@ -51,7 +54,10 @@ STOP_FIXES = {
 # since 17 Sep 2023 (DMRC, reported by India TV and india.com that day).
 LINE_VMAX = {"ORANGE/AIRPORT": 120}
 VMAX_DEFAULT = 80
-ACCEL = 1.0  # m/s^2, used for both acceleration and braking (assumption, typical for metro stock)
+# m/s^2, average acceleration from a stand to line speed and average service braking. Assumptions for DMRC stock
+# (rated about 1.0 at the start of a run, falling off with speed). index.html moves trains with the same two rates
+# (ACCEL and DECEL in its core block), so a run time this build allows is one the page can draw at or under LINE_VMAX.
+ACCEL, DECEL = 0.85, 0.9
 HAIRPIN_DEG = 30
 # Stations opened after the feed was made, on routes the feed already has. (line, after, before, stop_id,
 # dwell s, source): every route of `line` that runs after->before, or before->after, gets the stop
@@ -116,8 +122,9 @@ def project(shape, pt, dmin):
     return best[1], best[0]
 
 def tmin(dist, vmax_kmh):
-    v = vmax_kmh / 3.6
-    return dist / v + v / ACCEL if dist >= v * v / ACCEL else 2 * math.sqrt(dist / ACCEL)
+    """Shortest run over dist metres: accelerate at ACCEL, cruise at vmax (if there is room), brake at DECEL."""
+    v = vmax_kmh / 3.6; k = 1 / ACCEL + 1 / DECEL
+    return dist / v + v * k / 2 if dist >= v * v * k / 2 else math.sqrt(2 * dist * k)
 
 def clamp_speeds(pat, vmax, rid, S):
     """pat rows [stop, arr, dep, dist]. Lengthen too-fast segments, borrow from slack elsewhere."""
@@ -206,6 +213,40 @@ def calibrate(routes, cfg, S):
             rows.append((c["label"], ref["id"], j - i, c["stops"], before, after, c["minutes"]))
     return rows
 
+# Dwell at an interchange, in seconds, against the feed's 20 s everywhere (assumption: more people change trains
+# there). Terminals keep the feed's times: a trip starts 20 s before it leaves and ends as it arrives, and a real
+# turnaround is minutes, which the map doesn't draw. An interchange is a station served by two or more lines, by
+# name, plus the pairs below that are joined on foot under different names.
+DWELL_INTERCHANGE = 35
+INTERCHANGE_PAIRS = [("Noida Sec-52", "Noida Sector 51")]  # Blue and Aqua, joined by a walkway
+
+def interchanges(routes, stops):
+    lines = {}
+    for r in routes:
+        for p in r["pat"]: lines.setdefault(stops[p[0]][0], set()).add(r["line"])
+    for a, b in INTERCHANGE_PAIRS:
+        both = lines.get(a, set()) | lines.get(b, set()); lines[a] = lines[b] = both
+    return {sid for sid, s_ in stops.items() if len(lines.get(s_[0], ())) > 1}
+
+def tier_dwells(routes, stops):
+    """Lengthen intermediate interchange dwells to DWELL_INTERCHANGE. The extra time is taken from the runs
+    just before and after, split by how much each can spare above tmin, so the times at every other stop stay as
+    they were: end-to-end rides, calibrated spans and the starts headways.py lays out don't move."""
+    ic = interchanges(routes, stops); short = 0
+    for r in routes:
+        p = r["pat"]; vmax = LINE_VMAX.get(r["line"], VMAX_DEFAULT)
+        for j in range(1, len(p) - 1):
+            extra = DWELL_INTERCHANGE - (p[j][2] - p[j][1])
+            if p[j][0] not in ic or extra <= 0: continue
+            spare = [max(0, (b[1] - a[2]) - math.ceil(tmin(b[3] - a[3], vmax))) for a, b in ((p[j - 1], p[j]), (p[j], p[j + 1]))]
+            give = min(extra, sum(spare))
+            if give < extra: short += 1
+            if give <= 0: continue
+            x = min(spare[0], round(give * spare[0] / sum(spare))); y = min(spare[1], give - x); x = give - y
+            p[j][1] -= x; p[j][2] += y
+    note(f"dwells: {DWELL_INTERCHANGE} s at {len(ic)} interchange stops, 20 s elsewhere; time taken from the runs either side"
+         + (f" ({short} stop(s) had too little to spare and got less)" if short else ""))
+
 def rdp(pts, eps):
     if len(pts) < 3: return pts
     (x1, y1, _), (x2, y2, _) = pts[0], pts[-1]; dx, dy = x2 - x1, y2 - y1; L = math.hypot(dx, dy) or 1e-12
@@ -275,6 +316,7 @@ if os.path.exists(P4):
     import phase4
     est_routes, est_stops, est_meta = phase4.build(json.load(open(P4)), stops, routes, sys.modules[__name__])
     routes += est_routes; stops.update(est_stops); meta["estimated"] = est_meta
+tier_dwells(routes, stops)
 FREQ = os.path.join(HERE, "frequency.json")
 if os.path.exists(FREQ) and os.path.exists(P4):
     import headways
