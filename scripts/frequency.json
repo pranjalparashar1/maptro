@@ -1,6 +1,7 @@
 {
   "_about": "DMRC's average train frequency during peak and off-peak hours, as on 31.08.2026, from delhimetrorail.com/train-frequency (screenshots shared by pranjal, 24 Nov 2026). Each value is [weekday, saturday, sunday] in min:sec. The page gives no peak hours, first or last trains; scripts/headways.py keeps the 2023 feed's for those. Rapid Metro and Aqua (not DMRC) are not on the page.",
   "source": "DMRC train frequency table, as on 31.08.2026 (delhimetrorail.com/train-frequency)",
+  "as_of": "2026-08-31",
   "peak_bands": [[8, 12], [17, 21]],
   "peak_bands_source": "the 2023 DMRC feed, whose headways tighten 08:00-12:00 and 17:00-21:00",
   "sections": {

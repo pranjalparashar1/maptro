@@ -6,7 +6,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const core = new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound};')();
+const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,Buf,polyline,ribbon};')();
+const core = load();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
 const H = h => h * 3600;
@@ -159,4 +160,78 @@ test('branch trains alternate on shared track instead of doubling up', () => {
       assert.ok(Math.abs(gaps.reduce((a, b) => a + b) / gaps.length - want) < 5, `${line} ${dir} mean gap`);
     }
   }
+});
+
+// ---- 1.6: honest clock, 32-bit index buffers ----
+
+test('all lines and every peak train fit the index buffers, with nothing dropped', t => {
+  const ids = new Set(R.map(r => r.id)), V = new core.Buf(Float32Array), I = new core.Buf(Uint32Array);
+  let want = 0;
+  for (const r of R) { // the whole network's track, as buildStatic draws it with every line chosen
+    if (r.id.endsWith('_R') && ids.has(r.id.slice(0, -2))) continue;
+    const pts = []; for (let i = 0; i < r.mx.length; i++) pts.push([r.mx[i], r.my[i]]);
+    core.polyline(V, I, pts, [1, 1, 1, 1]); want += 6 * (pts.length - 1);
+  }
+  assert.equal(I.n, want, 'every track segment drawn');
+  assert.ok(Math.max(...I.view()) < V.n / 11, 'indices point at real vertices');
+  t.diagnostic(`track: ${V.n / 11} vertices`);
+  for (const at of [H(9), H(18.5)]) { // every train at peak, as long ribbons with generous padding
+    const tV = new core.Buf(Float32Array), tI = new core.Buf(Uint32Array), ts = core.trainsAt(R, at, null);
+    let drawn = 0;
+    for (const o of ts) { const n0 = tI.n; core.ribbon(tV, tI, o.r, o.d - 150, o.d + 150, 1, 40); if (tI.n > n0) drawn++; }
+    assert.equal(drawn, ts.length, 'a ribbon for every train');
+    assert.ok(Math.max(...tI.view()) < tV.n / 9);
+    t.diagnostic(`${ts.length} trains at ${at / 3600}h: ${tV.n / 9} vertices`);
+  }
+});
+
+test('16-bit index buffers stop at the cap and warn, instead of wrapping round', () => {
+  const c = load(), V = new c.Buf(Float32Array), I = new c.Buf(Uint16Array), warn = console.warn, said = [];
+  console.warn = m => said.push(m);
+  try {
+    V.n = 65530 * 11; V.need(0); // 65,530 vertices already in
+    c.polyline(V, I, [[0, 0], [1, 0], [2, 0]], [1, 1, 1, 1]); // would need vertices 65,530 to 65,535: fits
+    assert.equal(I.n, 12);
+    c.polyline(V, I, [[0, 0], [1, 0]], [1, 1, 1, 1]); // would need 65,536 and up: skipped
+    assert.equal(I.n, 12);
+    assert.equal(said.length, 1);
+  } finally { console.warn = warn; }
+});
+
+test('clock skew: ignored within 2 minutes, measured beyond it', () => {
+  const t0 = Date.UTC(2026, 10, 24, 6, 0, 0), at = ms => new Date(ms).toUTCString();
+  assert.equal(core.clockSkew(t0, t0 + 200, at(t0 + 100)), 0);           // in step
+  assert.equal(core.clockSkew(t0, t0 + 200, at(t0 + 90000)), 0);         // 1.5 min out: left alone
+  const slow = core.clockSkew(t0, t0 + 200, at(t0 + 7 * 60000));         // phone 7 min behind
+  assert.ok(Math.abs(slow - 7 * 60000) <= 1000, String(slow));
+  const fast = core.clockSkew(t0, t0 + 200, at(t0 - 3 * 3600000));       // phone 3 h ahead
+  assert.ok(Math.abs(fast + 3 * 3600000) <= 1000, String(fast));
+  assert.equal(core.clockSkew(t0, t0 + 200, null), 0);                    // no Date header
+  assert.equal(core.clockSkew(t0, t0 + 200, 'not a date'), 0);
+  assert.equal(core.clockSkew(t0, t0 + 20000, at(t0 + 3600000)), 0);     // answer too slow to trust
+});
+
+test('a corrected clock picks the right India time and service day', () => {
+  const phone = Date.UTC(2026, 10, 27, 21, 28, 0); // Sat 28 Nov, 02:58 in India by a phone 3 min slow
+  const off = core.clockSkew(phone, phone, new Date(phone + 180000).toUTCString());
+  assert.equal(core.dayKey(phone), 'wkd');       // still Friday's service day by the phone
+  assert.equal(core.dayKey(phone + off), 'sat'); // past 03:00: Saturday's
+  assert.ok(Math.abs(core.nowIST(phone + off) - (3 * 3600 + 60 + 0.5)) < 1); // really 03:01
+});
+
+test('the Disclaimer names the timetable and the day it runs', () => {
+  const p = core.provenance(D.meta, 'wkd');
+  assert.match(p, /31 Aug 2026/);
+  assert.match(p, /Aug 2023/);
+  assert.match(p, /weekday timetable/);
+  assert.match(core.provenance(D.meta, 'sat'), /Saturday timetable/);
+  assert.match(core.provenance(D.meta, 'sun'), /Sunday timetable/);
+  assert.doesNotMatch(p, /live/i);
+});
+
+test('the clock says Now, and nothing on screen says Live', () => {
+  const body = html.split('<body>')[1].split('<script>')[0].replace(/<[^>]+>/g, ' ');
+  assert.doesNotMatch(body, /\bLive\b/);
+  assert.match(html, /id="spd">Now</);
+  assert.match(html, /sim \? speed \+ '×' : 'Now'/);
 });

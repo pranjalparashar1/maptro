@@ -15,7 +15,7 @@ The principles were drawn from how Kiron (pranjal's quiz app) was built: its des
 3. **Ruthlessly minimal text.** No intro copy, no headings, no labels that repeat what a control shows. The line picker shows coloured dots and a short name. A train card is the line, where it is going, the next stop and when.
 4. **Phone only.** Design for an iPhone held in one hand. Laptops only have to work. Every touch target is at least 44px, even where the drawn shape is smaller.
 5. **Plain, kind copy.** Sentence case. "The trains are asleep", not "No service". "Couldn't load the timetable" with a "Tap to reload" button, never a bare error.
-6. **Honest.** Positions come from the timetable. The Disclaimer says so once, and each train card says "Scheduled" or "Estimated". Nothing is called live except the clock mode, which means "real time now".
+6. **Honest.** Positions come from the timetable. The Disclaimer says so once, names the timetable's sources and dates and which day's timetable is running, and each train card says "Scheduled" or "Estimated". Nothing is called live: on a map of moving trains, "Live" reads as GPS tracking, so the real-time clock mode is "Now" (1.6).
 7. **Smooth beats rich.** The DOM interface animates only transform and opacity. If an effect cannot run on the GPU, it does not ship.
 
 ---
@@ -39,7 +39,7 @@ Always dark, and **true black** (`#000`), so an OLED phone switches those pixels
 Rules:
 - **Colour belongs to the metro lines.** The interface itself is black, greys and white. That way the only colour on screen means a line, and nothing in the chrome competes with it.
 - Resting layers step up from black: page `--bg`, panels `--surface` with a 1px `--line` hairline, buttons and pressed rows `--surface2`.
-- State colours are few and small: the green dot beside "Live", amber when the clock runs fast, a white fill when Follow is on.
+- State colours are few and small: the green dot beside "Now", amber when the clock runs fast, a white fill when Follow is on.
 - The primary action ("Skip to 8 am", "Tap to reload", Follow when on) is white with black text.
 - Line colours are DMRC's own hues, pushed to full vividness for true black in 1.4 (`SHOW` in `index.html`): Pink stays light and Magenta deep, and Rapid Metro is a paler sky blue than the Blue Line, so neighbours never read as one line. They are drawn flat: no gradients, glow, outlines or added light.
 - **Full-strength colour.** The track is each line's colour at full strength (`TONES.track` = 1), as bright as the very first Maptro; a toned-down track was tried in 1.2 and read as dull. Station dots are a step lighter (`TONES.platform` = 1.2, OKLab lightness, hue kept); interchange dots are `--ink`.
@@ -94,7 +94,9 @@ Numbers that change (the clock, train count, minutes) use tabular numerals so th
 ### Top pills
 Left: the line picker (coloured dots, a short name such as "Airport Express" or "3 lines", a chevron). Right: the clock (time and a state word). It opens on the Airport Express line.
 
-The clock is only a control in simulation. Live time can't be sped up, so in Live the clock is plain text. "Skip to 8 am" starts a simulation at 10×; the clock then shows the speed in amber with a small » and cycles 1×, 10×, 60× on tap, and a "Live" pill appears beside it to go back to real time.
+The clock is only a control in simulation. The time now can't be sped up, so at "Now" the clock is plain text. "Skip to 8 am" starts a simulation at 10×; the clock then shows the speed in amber with a small » and cycles 1×, 10×, 60× on tap, and a "Now" pill appears beside it to go back to real time.
+
+The time is the phone's, unless it is more than 2 minutes off the server's (checked once with a small uncached request): then Maptro uses the server's time and the Disclaimer says so.
 
 ### Direction pill
 Shown under the line picker when exactly one line is chosen. It is a native `<select>` laid invisibly over a pill, so the phone's own picker opens. Options: "Both directions" (the default, and what any new choice of line resets to), "Rithala → Shaheed Sthal" and "Shaheed Sthal → Rithala". The pill reads "Both directions" or "To Rithala". Only trains, and station departures, in the chosen direction are shown; the track stays. Which way each route runs comes from `directions()` in the core block.
@@ -141,7 +143,7 @@ Name, a dot for each line, close. Body: the next four departures, each with minu
 When none of the chosen lines has a train running: "The trains are asleep", "Service runs from about 5:30 to 23:30.", and a white "Skip to 8 am".
 
 ### Disclaimer
-A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, and credits OpenStreetMap and OpenFreeMap. It fades out while a card is open.
+A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, where the timetable comes from and how old it is (from `data.json`'s `meta`), which day's timetable is running and that holidays aren't marked, whether the phone's clock is being corrected, and credits OpenStreetMap and OpenFreeMap. It fades out while a card is open.
 
 ### Buttons
 `.btn`: 44px, pill, `--surface2`. `.btn.act` / `.btn.on`: white fill, black text. All buttons use `.press`.
@@ -156,7 +158,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 4. **The map is the exception, on purpose.** Trains move every frame in a `requestAnimationFrame` loop that draws to WebGL (120 Hz on ProMotion phones). That loop only uploads buffers and draws; it never touches the DOM layout. The card text is the one DOM write it makes, 4 times a second, and only when the text changed.
 5. **One motion, one curve.** Reuse the curves below rather than inventing one for an element.
 6. **Never retime existing motion, and never go faster.** Changes ship one at a time and are judged by feel on a phone.
-7. **Respect `prefers-reduced-motion`.** Transitions and the Live pulse are off, the map jumps instead of flying when it refits, and the selected train's ring stops pulsing. Trains still move, because their movement is the information.
+7. **Respect `prefers-reduced-motion`.** Transitions and the pulse beside "Now" are off, the map jumps instead of flying when it refits, and the selected train's ring stops pulsing. Trains still move, because their movement is the information.
 
 | Token | Value | Used for |
 |---|---|---|
@@ -182,8 +184,8 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 ## 8. Copy
 
 - Short, plain, warm. Sentence case, no all-caps labels. One line wherever possible.
-- Words in use: "Lines", "All", "None", "Live", "Both directions", "To …", "19 trains active", "Zoom in or pick a line to see trains", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
-- Never call a position live or real-time.
+- Words in use: "Lines", "All", "None", "Now", "Both directions", "To …", "19 trains active", "Zoom in or pick a line to see trains", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
+- Never call a position or the clock live or real-time.
 
 ---
 
