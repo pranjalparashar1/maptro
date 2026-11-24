@@ -82,6 +82,12 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #pop.off{opacity:0;transform:translate(-50%,-8px) scale(.96);transition:opacity 420ms var(--settle),transform 420ms var(--settle)}
 body.dir #pop{top:calc(var(--sat) + 114px)}
 #pop .dots i{box-shadow:0 0 0 2px var(--surface)}
+/* zoomed out, trains hide; a quiet hint in the same place says how to bring them back */
+#nudge{position:fixed;z-index:3;top:calc(var(--sat) + 66px);left:50%;height:30px;border-radius:15px;padding:0 13px;display:flex;align-items:center;
+  font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;pointer-events:none;
+  transform:translate(-50%,0);transition:opacity 420ms var(--settle),transform 420ms var(--settle)}
+#nudge.off{opacity:0;transform:translate(-50%,-6px)}
+body.dir #nudge{top:calc(var(--sat) + 116px)}
 #clock .t{font-weight:650;letter-spacing:.2px}
 #clock .s{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
 #clock .s::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 2s ease-in-out infinite}
@@ -172,6 +178,7 @@ body.carded #disc{opacity:0;pointer-events:none}
   </span><select id="dsel" class="hx" aria-label="Direction"></select></span>
 </div>
 <div id="pop" class="panel off" aria-live="polite"><span class="dots" id="popd"></span><span id="popt"></span></div>
+<div id="nudge" class="panel off" aria-live="polite">Zoom in or pick a line to see trains</div>
 
 <div id="menu" class="panel" aria-label="Choose lines" hidden>
   <div class="mhead"><span>Lines</span><span class="ac"><span class="hw"><button id="all" class="press">All</button></span><span class="hw"><button id="none" class="press">None</button></span></span></div>
@@ -325,7 +332,10 @@ const DPR = () => Math.min(window.devicePixelRatio || 1, 3);
 const ORDER = ['RED','YELLOW','BLUE','GREEN','VIOLET','PINK','MAGENTA','GRAY','ORANGE/AIRPORT','AQUA','RAPID'];
 const NAMES = {RED:'Red',YELLOW:'Yellow',BLUE:'Blue',GREEN:'Green',VIOLET:'Violet',PINK:'Pink',MAGENTA:'Magenta',GRAY:'Grey','ORANGE/AIRPORT':'Airport Express',AQUA:'Aqua',RAPID:'Rapid Metro'};
 // Line colours, nudged brighter where DMRC's own read too dark on a night map.
-const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',RAPID:'#5aa0ec',GREEN:'#33b34f'};
+// Each line in its DMRC hue, pushed to full vividness so it glows on true black (1.4). Pink stays light and Magenta deep,
+// and Rapid Metro a paler sky blue than the Blue Line, so neighbours never read as one line.
+const SHOW = {RED:'#ff3a2f',YELLOW:'#ffd60a',BLUE:'#3388ff',GREEN:'#2fd45c',VIOLET:'#b25cff',PINK:'#ff6fbd',MAGENTA:'#f0179c',
+  GRAY:'#b9c0c9',AQUA:'#12e2f2','ORANGE/AIRPORT':'#ff8a12',RAPID:'#6cbcff'};
 const DEFAULT = ['ORANGE/AIRPORT'];
 const LINES_KEY = 'maptro-lines-v2'; // v2: the default became the Airport Express, so earlier saved picks start fresh
 const INK = [.957, .957, .957]; // --ink, the picked train
@@ -423,8 +433,8 @@ void main(){
 const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
 uniform float u_tw,u_gap,u_st,u_fade;
 void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);float r=length(p)*v_px*.5;
-  if(v_kind>.5&&v_kind<1.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.5-r+.5,0.,1.)*v_col.a;return;}
-  if(v_kind>2.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.3*v_sz-r+.5,0.,1.)*v_col.a;return;}
+  if(v_kind>.5&&v_kind<1.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.5-r+.5,0.,1.)*v_col.a*u_fade;return;}
+  if(v_kind>2.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.3*v_sz-r+.5,0.,1.)*v_col.a*u_fade;return;}
   float d=r-u_tw*.85*v_sz;
   if(v_kind>1.5){float a=clamp(1.-abs(d-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a*u_fade;return;}
   float edge=(1.-max(abs(p.x),abs(p.y)))*v_px*.5,glow=.26*exp(-max(d,0.)/(u_tw*.38))*smoothstep(0.,u_tw*.9,edge);
@@ -479,18 +489,26 @@ function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercat
   for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
 }
 
-// One unit, u, the width of a train, sets everything (CSS px). The track is two trains wide with a gap of g between
-// them. A station is a dot that takes the whole track and a little more, so a train arriving disappears into it.
-const ICON_Z = 12.4; // zoomed in from here trains are drawn as trains; zoomed out, as dots. Never anything between.
+// Everything grows with zoom (1.4). The track's width is set by zoom from the table below: a hairline when the whole
+// city is on screen, a broad band close up. One unit, u, the width of a train, is the track's half: the track is two
+// trains wide with a gap of g between them. A station is a dot that takes the whole track and a little more, so a
+// train arriving disappears into it.
+const ICON_Z = 12.8; // zoomed in from here trains are drawn as trains; zoomed out, as dots. Never anything between.
+const TRAIN_Z = 11.2; // zoomed out past this, with more than one line chosen, only the track shows (DESIGN.md, Zoom)
+const MINOR_Z = [10.7, 11.3]; // with more than one line chosen, ordinary stations fade in over these zooms
+const TRACK_W = [[8.5, 1.5], [10, 2.3], [11, 3.3], [12, 5.6], [13, 8.8], [14, 13], [15, 18], [16.5, 28]]; // [zoom, px]
+const ramp = (x, a, b) => Math.max(0, Math.min(1, (x - a) / (b - a)));
 function sizes(z) {
-  const u = Math.max(3, Math.min(8, 2.6 + (z - 10) * 1.2)), g = Math.max(.75, u * .12);
-  const band = 2 * u + g, lane = (u + g) / 2, tl = u * 4.6, st = band + u * .9;
-  return { u, tw: u, tl, g, band, lane, rad: u * .3, st };
+  let band = TRACK_W[TRACK_W.length - 1][1];
+  for (let i = 1; i < TRACK_W.length; i++) { const [z0, w0] = TRACK_W[i - 1], [z1, w1] = TRACK_W[i]; if (z <= z1) { band = w0 + (w1 - w0) * ramp(z, z0, z1); break; } }
+  const u = band / 2.12, g = u * .12, lane = (u + g) / 2, tl = u * 4.6, st = band + Math.max(u * .9, 1.8);
+  // a train dot keeps a size you can see and tap even where the track is thin
+  return { u, tw: u, tl, g, band, lane, rad: u * .3, st, dot: Math.max(u, 3.2) };
 }
 // CSS px per metre on the map at zoom z (512 px world tiles; Delhi's latitude)
 const pxPerM = z => 512 * 2 ** z / (40075016.7 * Math.cos(28.6 * Math.PI / 180));
 function makeGpu() {
-  const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
+  const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array), stMinorV: new Buf(Float32Array), vis: 1, visT: 1,
     headV: new Buf(Float32Array), fxV: new Buf(Float32Array), occV: new Buf(Float32Array),
     trV: new Buf(Float32Array), trI: new Buf(Uint16Array), pickV: new Buf(Float32Array), pickI: new Buf(Uint16Array), icon: 0, iconT: 0, lastT: 0,
     staticDirty: true, gl: null };
@@ -506,7 +524,7 @@ function makeGpu() {
     g.line = prog(LINE_VS, LINE_FS, ['a_pos', 'a_prev', 'a_next', 'a_side', 'a_col']);
     g.pt = prog(PT_VS, PT_FS, ['a_pos', 'a_dir', 'a_col', 'a_size', 'a_kind']);
     g.tr = prog(TR_VS, TR_FS, ['a_pos', 'a_prev', 'a_next', 'a_side', 'a_x', 'a_len']);
-    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'headV', 'fxV', 'occV', 'trV', 'trI', 'pickV', 'pickI']) g.b[k] = gl.createBuffer();
+    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'stMinorV', 'headV', 'fxV', 'occV', 'trV', 'trI', 'pickV', 'pickI']) g.b[k] = gl.createBuffer();
     g.isGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
     g.vao = g.isGL2 ? null : gl.getExtension('OES_vertex_array_object');
     g.minmax = g.isGL2 ? gl.MAX : (gl.getExtension('EXT_blend_minmax') || {}).MAX_EXT;
@@ -528,7 +546,7 @@ function makeGpu() {
     const res = [gl.drawingBufferWidth, gl.drawingBufferHeight], dpr = view.dpr, z = view.zoom, S = sizes(z);
     const tw = S.u * dpr, tl = S.tl * dpr, trackW = S.band * dpr, off = S.lane * dpr;
     if (g.staticDirty) { upload(gl, gl.ARRAY_BUFFER, g.b.lineV, g.lineV.view(), gl.STATIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.lineI, g.lineI.view(), gl.STATIC_DRAW);
-      upload(gl, gl.ARRAY_BUFFER, g.b.stV, g.stV.view(), gl.STATIC_DRAW); g.staticDirty = false; }
+      upload(gl, gl.ARRAY_BUFFER, g.b.stV, g.stV.view(), gl.STATIC_DRAW); upload(gl, gl.ARRAY_BUFFER, g.b.stMinorV, g.stMinorV.view(), gl.STATIC_DRAW); g.staticDirty = false; }
     gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     // track: the line's own colour, solid, one rail per direction
     const L = g.line; gl.useProgram(L.p); gl.uniformMatrix4fv(L.u.u_m, false, M); gl.uniform2fv(L.u.u_res, res);
@@ -542,7 +560,13 @@ function makeGpu() {
     if (z > ICON_Z + .1) g.iconT = 1; else if (z < ICON_Z - .1) g.iconT = 0;
     g.icon = RM.matches ? g.iconT : g.icon + Math.sign(g.iconT - g.icon) * Math.min(Math.abs(g.iconT - g.icon), dt / 200);
     const fade = g.icon * g.icon * (3 - 2 * g.icon);
-    const P = g.pt, T = g.tr, pts = (buf, data, scale, o, pad, kind) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
+    // Zoomed out with several lines, trains go and only the track shows; they fade back in 250 ms as you zoom in.
+    // With one line chosen they always show. A little give either side of TRAIN_Z stops a resting pinch flickering.
+    const one = sel.size === 1;
+    if (one || z > TRAIN_Z + .1) g.visT = 1; else if (z < TRAIN_Z - .1) g.visT = 0;
+    g.vis = RM.matches ? g.visT : g.vis + Math.sign(g.visT - g.vis) * Math.min(Math.abs(g.visT - g.vis), dt / 250);
+    const vis = g.vis * g.vis * (3 - 2 * g.vis), minorA = one ? 1 : ramp(z, MINOR_Z[0], MINOR_Z[1]), dotW = S.dot * dpr;
+    const P = g.pt, T = g.tr, pts = (buf, data, scale, o, pad, kind) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && data !== g.stMinorV) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
     const strip = (V, I, ring, a) => { if (!I.n || a <= 0) return; gl.useProgram(T.p); gl.uniformMatrix4fv(T.u.u_m, false, M); gl.uniform2fv(T.u.u_res, res);
       upload(gl, gl.ARRAY_BUFFER, ring ? g.b.pickV : g.b.trV, V.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, ring ? g.b.pickI : g.b.trI, I.view(), gl.DYNAMIC_DRAW);
@@ -550,17 +574,18 @@ function makeGpu() {
       gl.uniform1f(T.u.u_rad, S.rad * dpr); gl.uniform1f(T.u.u_gap, S.g * dpr); gl.uniform1f(T.u.u_ring, ring ? 1 : 0); gl.uniform1f(T.u.u_a, a);
       gl.drawElements(gl.TRIANGLES, I.n, gl.UNSIGNED_SHORT, 0); unbind(gl, 6); };
     const ptSetup = () => { gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
-      gl.uniform1f(P.u.u_tl, tw * 1.7); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_st, S.st * dpr); };
+      gl.uniform1f(P.u.u_tl, dotW * 1.7); gl.uniform1f(P.u.u_tw, dotW); gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_st, S.st * dpr); };
     // trains first, then the station dots over them, so a train arriving slides in under its station's dot
-    strip(g.trV, g.trI, false, fade);
+    strip(g.trV, g.trI, false, fade * vis);
     ptSetup();
-    if (fade < 1) { gl.uniform1f(P.u.u_fade, 1 - fade); pts(g.b.headV, g.headV, 1, off, tw * 1.4); }
+    if (fade < 1 && vis > 0) { gl.uniform1f(P.u.u_fade, (1 - fade) * vis); pts(g.b.headV, g.headV, 1, off, dotW * 1.4); }
+    if (minorA > 0) { gl.uniform1f(P.u.u_fade, minorA); pts(g.b.stMinorV, g.stMinorV, S.st + 2, 0, 0); }
     gl.uniform1f(P.u.u_fade, 1);
     pts(g.b.stV, g.stV, S.st + 2, 0, 0);
-    pts(g.b.occV, g.occV, S.st + 2, 0, 0);
+    if (vis > 0) { gl.uniform1f(P.u.u_fade, vis); pts(g.b.occV, g.occV, S.st + 2, 0, 0); }
     // the selection outline, on top of everything
-    if (fade > 0) { unbind(gl, 5); strip(g.pickV, g.pickI, true, fade * (g.pickA || 1)); ptSetup(); }
-    if (fade < 1) { gl.uniform1f(P.u.u_fade, 1 - fade); pts(g.b.fxV, g.fxV, 1, off, 6 * dpr); gl.uniform1f(P.u.u_fade, 1); }
+    if (fade > 0 && vis > 0) { unbind(gl, 5); strip(g.pickV, g.pickI, true, fade * vis * (g.pickA || 1)); ptSetup(); }
+    if (fade < 1 && vis > 0) { gl.uniform1f(P.u.u_fade, (1 - fade) * vis); pts(g.b.fxV, g.fxV, 1, off, 6 * dpr); gl.uniform1f(P.u.u_fade, 1); }
     unbind(gl, 5);
     gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
   };
@@ -570,7 +595,7 @@ function makeGpu() {
 /* ---------- scene building ---------- */
 let stations = [], labelList = [], stationByName = new Map(); // stations on selected lines, grouped by name
 function buildStatic() {
-  const g = gpu; g.lineV.reset(); g.lineI.reset(); g.stV.reset();
+  const g = gpu; g.lineV.reset(); g.lineI.reset(); g.stV.reset(); g.stMinorV.reset();
   const ids = new Set(R.map(r => r.id));
   for (const l of ORDER) {
     if (!sel.has(l)) continue;
@@ -591,15 +616,17 @@ function buildStatic() {
   });
   stations = [...byName.values()].filter(s => s.on.size); stationByName = byName;
   // one dot per station per line, on that line's own track; white at an interchange, as on Maptro's first map
+  // Interchanges and terminals always show; ordinary stations go when zoomed out (minor buffer, faded by zoom)
   for (const { s, r, d } of plat.values()) {
     const [x, y] = posAt(r, d), c = s.lines.size > 1 ? INK : tone[r.line].platform;
-    g.stV.push(x - ORIGIN[0], y - ORIGIN[1], 0, 0, c[0], c[1], c[2], 1, 1, 1);
+    (s.lines.size > 1 || s.term ? g.stV : g.stMinorV).push(x - ORIGIN[0], y - ORIGIN[1], 0, 0, c[0], c[1], c[2], 1, 1, 1);
   }
   for (const s of stations) s.ic = s.lines.size > 1;
   for (const s of stations) {
     const ic = s.lines.size > 1;
     s.pri = (s.term ? 2 : 0) + (ic ? 1 : 0);
-    s.minZ = s.term ? 9 : ic ? 10.3 : 11.6;
+    // names come in by importance as you zoom; with one line chosen its ordinary stations are named sooner
+    s.minZ = s.term ? 9.4 : ic ? 10.6 : sel.size === 1 ? 10.4 : 11.8;
   }
   labelList = stations.slice().sort((a, b) => b.pri - a.pri);
   g.staticDirty = true; labelsDirty = true;
@@ -760,11 +787,12 @@ const lc = $('labels'), lx = lc.getContext('2d'), widths = new Map();
 function drawLabels() {
   const W = innerWidth, H = innerHeight, dpr = DPR();
   if (lc.width !== Math.round(W * dpr) || lc.height !== Math.round(H * dpr)) { lc.width = Math.round(W * dpr); lc.height = Math.round(H * dpr); }
-  lx.setTransform(dpr, 0, 0, dpr, 0, 0); lx.clearRect(0, 0, W, H);
+  lx.setTransform(dpr, 0, 0, dpr, 0, 0); lx.globalAlpha = 1; lx.clearRect(0, 0, W, H);
   const z = cam.zoom(), placed = [], r0 = sizes(z).st / 2 + 5;
   const hit = b => placed.some(q => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
   // keep labels clear of the top controls
   placed.push([0, 0, W, ($('dirw').classList.contains('off') ? $('pick') : $('dir')).getBoundingClientRect().bottom + 4]);
+  if (!$('nudge').classList.contains('off')) { const n = $('nudge').getBoundingClientRect(); placed.push([n.left - 4, n.top - 4, n.right + 4, n.bottom + 4]); }
   lx.lineJoin = 'round'; lx.textBaseline = 'middle';
   // a label may not cover another interchange or terminal, so it can't read as that station's name
   const dots = labelList.map(s => cam.project(s.m[0], s.m[1]));
@@ -775,16 +803,19 @@ function drawLabels() {
     if (z < s.minZ) continue;
     const [x, y] = dots[li];
     if (x < 0 || y < 0 || x > W || y > H) continue;
-    const big = s.pri >= 2, font = `${big ? 700 : 600} ${big ? 13 : 12}px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif`;
+    // Names grow with zoom, 11px far out to 13px close in (terminals 1px more), in a light weight; each fades in over
+    // half a zoom level from where it first fits, instead of popping on.
+    const big = s.pri >= 2, fs = Math.round((Math.max(11, Math.min(13, 11 + (z - 10.5) * .5)) + (big ? 1 : 0)) * 2) / 2;
+    const font = `${big ? 600 : 500} ${fs}px -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif`;
     lx.font = font; const key = font + s.name; let w = widths.get(key); if (w == null) widths.set(key, w = lx.measureText(s.name).width);
-    const h = big ? 16 : 15;
+    const h = fs + 3;
     const cands = [[x + r0, y - h / 2], [x - r0 - w, y - h / 2], [x - w / 2, y - r0 - h], [x - w / 2, y + r0]];
     for (const [bx, by] of cands) {
       const box = [bx - 2, by - 1, bx + w + 2, by + h + 1];
       if (box[0] < 2 || box[2] > W - 2 || hit(box) || coversDot(box, li)) continue;
       placed.push(box);
       // plain text, no halo: every name in --ink; terminals stand out by weight and size alone
-      lx.fillStyle = '#f4f4f4'; lx.fillText(s.name, bx, by + h / 2);
+      lx.globalAlpha = .4 + .6 * ramp(z, s.minZ, s.minZ + .5); lx.fillStyle = '#f4f4f4'; lx.fillText(s.name, bx, by + h / 2);
       break;
     }
   }
@@ -877,6 +908,9 @@ function paintCounts() {
   $('pick').setAttribute('aria-label', `${$('plbl').textContent}, ${tot} trains active. Choose lines`);
   // nothing running on the chosen lines: offer to skip ahead
   const empty = sel.size > 0 && tot === 0 && !picked;
+  // trains hidden by zoom: the nudge, unless the count note, the picker or a card is already saying something
+  const nudge = !gpu.visT && tot > 0 && !picked && $('menu').hidden && $('pop').classList.contains('off');
+  if (nudge === $('nudge').classList.contains('off')) { $('nudge').classList.toggle('off', !nudge); labelsDirty = true; }
   if (empty !== !$('toast').hidden) {
     $('toast').hidden = !empty;
     if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><span class="hw"><button class="btn act press" id="ff">Skip to 8 am</button></span>`, haptic($('ff')), $('ff').onclick = () => { startSim(8 * 3600, 10); popPending = true; };
@@ -887,8 +921,9 @@ function paintCounts() {
 function tap(x, y) {
   if (!$('menu').hidden) return openMenu(false);
   let best = null, bd = 26;
-  for (const o of trains) { const [a, b] = cam.project(o.pos[0], o.pos[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'train', r: o.r, s0: o.s0, o }; } }
-  if (!best) { bd = 20; for (const s of stations) { const [a, b] = cam.project(s.m[0], s.m[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'station', s }; } } }
+  if (gpu.visT) for (const o of trains) { const [a, b] = cam.project(o.pos[0], o.pos[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'train', r: o.r, s0: o.s0, o }; } }
+  const minor = sel.size === 1 || cam.zoom() > MINOR_Z[0] + .3; // a hidden station can't be tapped
+  if (!best) { bd = 20; for (const s of stations) { if (!minor && !s.ic && !s.term) continue; const [a, b] = cam.project(s.m[0], s.m[1]), d = Math.hypot(a - x, b - y); if (d < bd) { bd = d; best = { kind: 'station', s }; } } }
   if (!best) return closeCard();
   if (best.kind !== 'train') buzz();
   picked = best; setFollow(false); buildCard(); paintCard(); $('card').hidden = false; document.body.classList.add('carded');
