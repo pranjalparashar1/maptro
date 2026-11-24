@@ -91,7 +91,11 @@ class _Forms(html.parser.HTMLParser):
             self.forms.append(dict(action=a.get("action") or "", method=(a.get("method") or "get").lower(), fields={}))
         elif not self.forms:
             return
-        elif tag == "input" and a.get("name") and a.get("type", "text").lower() not in ("submit", "button", "checkbox", "radio"):
+        elif tag == "input" and a.get("name") and a.get("type", "text").lower() in ("radio", "checkbox"):
+            f, v = self.forms[-1]["fields"], a.get("value") or "on"
+            if f.get(a["name"]) is None or any(x in v.lower() for x in PREFER):
+                f[a["name"]] = v
+        elif tag == "input" and a.get("name") and a.get("type", "text").lower() not in ("submit", "button"):
             self.forms[-1]["fields"][a["name"]] = a.get("value") or ""
         elif tag == "select" and a.get("name"):
             self._sel = a["name"]; self.forms[-1]["fields"].setdefault(self._sel, None)
@@ -106,13 +110,17 @@ class _Forms(html.parser.HTMLParser):
 
 
 PREFER = ("non-commercial", "non_commercial", "noncommercial", "academ")
+# OTD's form asks for a name and an e-mail. Set OTD_NAME / OTD_EMAIL (repository variables in the workflow)
+# if it starts insisting on real ones.
+DEFAULTS = {"name": "GTFS feed watcher", "email": ""}
 
 
 def download(out, url=URL, timeout=120):
     """Fetch the DMRC GTFS zip from OTD into `out`.
 
-    The page holds a Django form (CSRF token, then usage type and purpose, as of Nov 2026). Every form on
-    the page that carries the token is tried in turn, with its own action and fields, until one returns a zip.
+    The page (Nov 2026) has one Django form per download button, each posting back to the page with a CSRF
+    token, `dataDownloaded`, a usage-type radio, purpose checkboxes, name and e-mail. Every form carrying the
+    token is tried in order (the first is "Download Data", the whole zip) until one returns a zip.
     """
     jar = http.cookiejar.CookieJar()
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
@@ -131,6 +139,9 @@ def download(out, url=URL, timeout=120):
     for form in forms:
         target = urllib.parse.urljoin(url, form["action"]) if form["action"] else url
         fields = {k: v or "" for k, v in form["fields"].items()}
+        for k, env in (("name", "OTD_NAME"), ("email", "OTD_EMAIL")):
+            if k in fields and not fields[k]:
+                fields[k] = os.environ.get(env) or DEFAULTS[k]
         data = urllib.parse.urlencode(fields).encode()
         headers = {"Content-Type": "application/x-www-form-urlencoded", "Referer": url}
         if not any(c.name == "csrftoken" for c in jar):

@@ -91,11 +91,14 @@ class Resp(io.BytesIO):
 
 PAGE = b"""<html><body>
 <form method="post" action="/data/broken/"><input type="hidden" name="csrfmiddlewaretoken" value="tok123"></form>
-<form method="POST" action="/data/staticDMRC/download/">
+<form method="POST" action="/data/staticDMRC/">
  <input type="hidden" name="csrfmiddlewaretoken" value="tok123">
- <select name="usage_type"><option value="">--</option><option value="Commercial">Commercial</option>
-  <option value="Non-Commercial">Non-Commercial</option></select>
- <select name="purpose"><option value="Business">Business</option><option value="Academia R&amp;D">Academia R&amp;D</option></select>
+ <input type='hidden' name='dataDownloaded' value='all'>
+ <input type="radio" value="Commercial" name="usageType"><input type="radio" value="NonCommercial" name="usageType">
+ <input type="checkbox" name="purpose" value="Academia"><input type="checkbox" name="purpose" value="R&amp;D">
+ <input type="checkbox" name="purpose" value="Business">
+ <input type="name" class="form-control" placeholder="Name" name="name">
+ <input name="email" type="email" placeholder="E-mail"><input type="checkbox" required="">
  <button type="submit">Submit</button>
 </form></body></html>"""
 
@@ -107,7 +110,7 @@ def opener(zipbytes, calls):
             calls.append(req)
             if isinstance(req, str):
                 return Resp(PAGE, "text/html")
-            if req.full_url.endswith("/broken/"):
+            if req.full_url.endswith("/broken/") or b"usageType" not in req.data:
                 raise G.urllib.error.HTTPError(req.full_url, 404, "NOT FOUND", {}, None)
             return Resp(zipbytes, "application/zip")
     return lambda *a: Opener()
@@ -122,9 +125,10 @@ class Download(unittest.TestCase):
             self.assertEqual(G.fingerprint(G.read_feed(p)), G.fingerprint(FEED))
         self.assertEqual(calls[1].full_url, "https://otd.delhi.gov.in/data/broken/")
         post = calls[2]
-        self.assertEqual(post.full_url, "https://otd.delhi.gov.in/data/staticDMRC/download/")
-        self.assertEqual(dict(G.urllib.parse.parse_qsl(post.data.decode())),
-                         {"csrfmiddlewaretoken": "tok123", "usage_type": "Non-Commercial", "purpose": "Academia R&D"})
+        self.assertEqual(post.full_url, "https://otd.delhi.gov.in/data/staticDMRC/")
+        self.assertEqual(dict(G.urllib.parse.parse_qsl(post.data.decode(), keep_blank_values=True)),
+                         {"csrfmiddlewaretoken": "tok123", "dataDownloaded": "all", "usageType": "NonCommercial",
+                          "purpose": "Academia", "name": "GTFS feed watcher", "email": ""})
         self.assertEqual(post.get_header("Cookie"), "csrftoken=tok123")
         self.assertIn("Content-Disposition", h)
 

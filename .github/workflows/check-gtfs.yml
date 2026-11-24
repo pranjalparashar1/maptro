@@ -36,6 +36,9 @@ jobs:
 
       - name: Download the feed and compare
         id: check
+        env:
+          OTD_NAME: ${{ vars.OTD_NAME }}
+          OTD_EMAIL: ${{ vars.OTD_EMAIL }}
         run: python3 scripts/gtfs_feed.py check --download feed.zip --report report.md
 
       - name: Install pandas
