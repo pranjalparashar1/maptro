@@ -1,5 +1,5 @@
 {
- "_about": "Station points corrected to OpenStreetMap. From scripts/audit_osm.py, GitHub Actions run 45359465106 (Overpass, OSM data as of 2026-11-24T08:49Z): every stop more than 150 m from its OSM station. Each was checked by hand: the OSM name is the same station, and where English Wikipedia's station article has coordinates (read 24 Nov 2026) they are given as wikipedia_m, the distance from the new point. build.py moves the stop here and bends the feed's track to pass through it (see shift_shape). Data (c) OpenStreetMap contributors, ODbL.",
+ "_about": "Station points corrected to OpenStreetMap. From scripts/audit_osm.py, GitHub Actions run 45359465106 (Overpass, OSM data as of 2026-11-24T08:49Z): every stop more than 150 m from its OSM station, plus three found once audit_osm.py knew OSM's names for them. Each was checked by hand: the OSM name is the same station, and where English Wikipedia's station article has coordinates (read 24 Nov 2026) they are given as wikipedia_m, the distance from the new point. build.py moves the stop here and bends the feed's track to pass through it (see shift_shape). Data (c) OpenStreetMap contributors, ODbL.",
  "stops": {
   "220": {
    "name": "Raja Nahar Singh",
@@ -348,6 +348,30 @@
    "lon": 77.221727,
    "osm": "node/7018316587",
    "moved_m": 169
+  },
+  "224": {
+   "name": "Mayur Vihar Pocket 1",
+   "lat": 28.605862,
+   "lon": 77.298702,
+   "osm": "node/6196100479",
+   "moved_m": 246,
+   "note": "OSM uses the new name, Shree Ram Mandir Mayur Vihar. Found on the re-run with name aliases (Actions run 45363051918)."
+  },
+  "94": {
+   "name": "RK Ashram Marg",
+   "lat": 28.639244,
+   "lon": 77.208579,
+   "osm": "node/6539894850",
+   "moved_m": 223,
+   "note": "OSM: Ramakrishna Ashram Marg. Found on the re-run with name aliases (Actions run 45363051918)."
+  },
+  "138": {
+   "name": "Badarpur Border",
+   "lat": 28.493258,
+   "lon": 77.30303,
+   "osm": "way/581226084",
+   "moved_m": 213,
+   "note": "OSM: Badarpur. Found on the re-run with name aliases (Actions run 45363051918)."
   }
  }
 }
