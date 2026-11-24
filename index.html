@@ -329,9 +329,9 @@ const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',R
 const DEFAULT = ['ORANGE/AIRPORT'];
 const LINES_KEY = 'maptro-lines-v2'; // v2: the default became the Airport Express, so earlier saved picks start fresh
 const INK = [.957, .957, .957]; // --ink, the picked train
-// One light, three tones of each line's colour: the track at rest, its platforms a step up, the trains at full strength.
+// Each line in its own colour at full strength; its platforms a step lighter. Trains are --ink.
 // Tones change lightness in OKLab and keep the hue, so a darker yellow stays yellow rather than going grey.
-const TONES = { track: .8, platform: 1 };
+const TONES = { track: 1, platform: 1.2 };
 const SPEEDS = [1, 10, 60]; // simulation only; live time always runs at 1x
 // Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
 // true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
@@ -418,24 +418,25 @@ void main(){
   float px=a_kind>1.5||a_kind<.5?u_tl*a_size+2.*u_pad:a_size*u_scale;
   gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=px;v_px=px;v_sz=a_size;v_col=a_col;v_kind=a_kind;
 }`;
-// Trains and platforms share one shape: a rounded box whose corner radius comes from the same unit as the track.
-// A train is three coaches with gaps between them, the leading coach lit. A platform is the track widening, a train long,
-// with corners concentric to the train's so a train stopped inside it sits exactly within it.
+// A train is a bullet seen from above: one solid colour, a square-cornered tail (corners from the same unit as the
+// track) and a tapered nose that points the way it travels, with a faint glow around it.
+// A platform is the track widening, a train long, its corners concentric with a train's tail.
 const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
-uniform float u_tl,u_tw,u_coach,u_gap,u_rad;uniform vec2 u_pl;uniform vec3 u_lead;
+uniform float u_tl,u_tw,u_gap,u_rad,u_icon;uniform vec2 u_pl;
 float rbox(vec2 q,vec2 h,float r){vec2 d=abs(q)-h+r;return length(max(d,0.))+min(max(d.x,d.y),0.)-r;}
+float ell(vec2 q,vec2 r){float k=length(q/r);vec2 g=q/(r*r)/max(k,1e-4);return (k-1.)/max(length(g),1e-4);}
+float bullet(vec2 q,float L,float W,float r){float hl=L*.5,hw=W*.5,nose=min(W*1.6,L*.4),x0=hl-nose;
+  return min(rbox(q-vec2((x0-hl)*.5,0.),vec2((x0+hl)*.5,hw),r),ell(q-vec2(x0,0.),vec2(nose,hw)));}
 void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);
   vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
   if(v_kind>.5&&v_kind<1.5){vec2 h=u_pl*.5;float d=rbox(q,h,min(h.y,u_rad+(u_pl.y-u_tw)*.5));
     gl_FragColor=vec4(v_col.rgb,1.)*clamp(.5-d,0.,1.)*v_col.a;return;}
-  float L=u_tl*v_sz,W=u_tw*v_sz,r=u_rad*v_sz,cl=L/3.,d;
-  float k=u_coach>.5?clamp(floor(q.x/cl+.5),-1.,1.):0.; // which coach this pixel belongs to
-  if(u_coach>.5)d=rbox(q-vec2(k*cl,0.),vec2(cl*.5-u_gap*.5,W*.5),r);else d=rbox(q,vec2(L*.5,W*.5),r);
-  if(v_kind>1.5){float a=clamp(1.-abs(rbox(q,vec2(L*.5,W*.5),r)-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
-  // the leading coach is lit, so you can tell which way a train is going without an arrow
-  float lead=u_coach>.5?step(.5,k):smoothstep(L*.12,L*.2,q.x);
-  vec3 col=v_col.rgb*mix(u_lead.x,1.,lead);
-  gl_FragColor=vec4(col,1.)*clamp(.5-d,0.,1.);
+  float L=u_tl*v_sz,W=u_tw*v_sz,d=mix(length(q)-W*.85,bullet(q,L,W,u_rad*v_sz),u_icon);
+  if(v_kind>1.5){float a=clamp(1.-abs(d-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
+  // the glow fades out before the sprite's edge, so its square never shows
+  float edge=(1.-max(abs(p.x),abs(p.y)))*v_px*.5;
+  float glow=.26*exp(-max(d,0.)/(W*.38))*smoothstep(0.,W*.9,edge);
+  gl_FragColor=vec4(v_col.rgb,1.)*max(clamp(.5-d,0.,1.),glow);
 }`;
 
 class Buf { // growable Float32 / Uint16 writer
@@ -464,7 +465,9 @@ function sizes(z) {
   const band = 2 * u + g, lane = (u + g) / 2, tl = u * 4.6;
   // zoomed out a platform is round; from about zoom 12 it stretches to hold a whole train
   const m = u * .45, pw = band + 2 * m, pl = pw + (tl + 2 * m + 2 * g - pw) * Math.max(0, Math.min(1, (z - 11.4) / 1.4));
-  return { u, tw: u, tl, g, band, lane, rad: u * .3, pw, pl, st: Math.max(pw, pl * .55) };
+  // zoomed out a train is a dot, to save space; between zoom 12 and 12.8 it grows into the bullet
+  const icon = Math.max(0, Math.min(1, (z - 12) / .8));
+  return { u, tw: u, tl, g, band, lane, rad: u * .3, pw, pl, st: Math.max(pw, pl * .55), icon };
 }
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
@@ -513,13 +516,13 @@ function makeGpu() {
     unbind(gl, 5);
     // platforms sit on the track, under the trains
     const P = g.pt; gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
-    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_coach, S.u >= 4.6 ? 1 : 0);
-    gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_rad, S.rad * dpr); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr); gl.uniform3f(P.u.u_lead, .74, .74, .74);
+    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); 
+    gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_rad, S.rad * dpr); gl.uniform1f(P.u.u_icon, S.icon); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr); 
     const pts = (buf, data, scale, o, pad, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
     pts(g.b.stV, g.stV, S.pl + 2, 0, 0);
     // trains, then the selection outline
-    pts(g.b.headV, g.headV, 1, off, 2 * dpr);
+    pts(g.b.headV, g.headV, 1, off, tw * 1.4);
     pts(g.b.fxV, g.fxV, 1, off, 6 * dpr);
     unbind(gl, 5);
     gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);

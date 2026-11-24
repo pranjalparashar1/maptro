@@ -42,8 +42,8 @@ Rules:
 - State colours are few and small: the green dot beside "Live", amber when the clock runs fast, a white fill when Follow is on.
 - The primary action ("Skip to 8 am", "Tap to reload", Follow when on) is white with black text.
 - Line colours are DMRC's own, nudged brighter where they read too dark on black (`SHOW` in `index.html`). They are drawn flat: no gradients, glow, outlines or added light.
-- **One light, three tones.** Each line's colour comes in three tones, made by scaling its OKLab lightness so the hue holds (a darker yellow stays yellow, not olive): the track at rest is 80% (`TONES.track`), a platform is the full colour, and the trains are `--ink`. Brighter means "something is here". Trains are the brightest thing on the map and the same white on every line; the track under a train says which line it is.
-- The leading coach of each train is `--ink`; the others are `--ink` at 74%. That is the only direction cue.
+- **Full-strength colour.** The track is each line's colour at full strength (`TONES.track` = 1), as bright as the very first Maptro; a toned-down track was tried in 1.2 and read as dull. Platforms are a step lighter (`TONES.platform` = 1.2, OKLab lightness, hue kept).
+- Trains are `--ink`, one solid colour, with a faint glow around them. They are the brightest thing on the map and the same on every line; the track under a train says which line it is.
 
 ### Basemap
 OpenStreetMap data, served as vector tiles by OpenFreeMap (free, no key, made to be linked from other sites), drawn in Maptro's own style (`BLACK_STYLE` in `index.html`):
@@ -103,19 +103,19 @@ Shown under the line picker when exactly one line is chosen. It is a native `<se
 "19 trains active", with the line's dot: a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
 
 ### Trains, track and stations: one system
-The first draft of 1.2 showed that the map, the track and the trains read as three design languages: the basemap was flat filled shapes, the track was outlined rails, the trains were a white sprite with a sharp nose and a rim. Everything is now built from the basemap's own language: **flat fills, rounded geometry, no outlines, one unit.**
+The first draft of 1.2 showed that the map, the track and the trains read as three design languages: the basemap was flat filled shapes, the track was outlined rails, the trains were a white sprite with a sharp nose and a rim. Everything is now built from the basemap's own language: **flat fills, rounded geometry, no outlines, one unit.** The one exception is the trains' faint glow, kept on purpose so a train reads as the live thing on the map.
 
 **The unit.** `u` is a train's width (`sizes()` in `index.html`): 3px zoomed out, growing to 8px. Everything else is a multiple of it.
 
 | Part | Size | Corner radius |
 |---|---|---|
-| Train | `u` wide, `4.6u` long, three coaches with gaps of `g = .12u` | `.3u` |
-| Track | `2u + g`: exactly two trains, one per direction, with `g` between | round joins, like the roads |
+| Train | zoomed in: `u` wide, `4.6u` long, a bullet with a square-cornered tail and tapered nose. Below zoom 12: a dot `1.7u` across | tail `.3u` |
+| Track | `2u + g` (`g = .12u`): exactly two trains, one per direction | round joins, like the roads |
 | Platform | track width plus `.45u` all round; zoomed out a round mark, from about zoom 11.5 it stretches to hold a train | concentric with a train's: `.3u + .45u` |
 | Roads | MapLibre lines with round caps and joins | |
 
 - **Track:** one flat band in the line's track tone, two trains wide. Trains run on the left side, as Delhi's do, so the two directions never overlap. A train fills its half of the band edge to edge.
-- **Trains:** three flat coaches with round corners, the leading one lit. No windscreen, headlight, glow, rim or trail. The heading is averaged over 90 m of track, so trains turn smoothly through bends. The picked train gets a white outline, `2.5g` out, that pulses.
+- **Trains:** zoomed in, a minimal bullet: one solid `--ink` fill with a faint glow (26% at its edge, gone within about a train's width, drawn in the same sprite, so no blur), its nose showing which way it travels. Zoomed out past 12 it is a dot, to save space; between zoom 12 and 12.8 the dot grows into the bullet (the shapes are blended, so there is no jump). No windscreen, coaches, rim or trail. Three coaches were tried in 1.2 and read as dots. The heading is averaged over 90 m of track, so trains turn smoothly through bends. The picked train gets a white outline, `2.5g` out, that pulses.
 - **Stations are drawn as their platforms:** the track widening, in the line's full colour, a train long, so a train visibly pulls in and stops inside it. Each line gets its own platform where it stops, so an interchange shows each line's platform where it really is; interchanges are told apart by their bolder label.
   - Real station footprints were considered and not used: most of Delhi's stations are underground and have no footprint, the elevated ones are a few pixels across until zoom 15, and OpenStreetMap outlines vary in quality. The platform says the same thing (a train stops here, along this track) at every zoom.
 - **Basemap:** unchanged colours; roads now have round caps and joins, the same geometry as the track.
@@ -205,7 +205,7 @@ From Kiron's record, and they apply here too:
 ## 11. Checklist for any change
 
 - [ ] Uses the tokens above; colour only for lines and state.
-- [ ] Map shapes come from the unit `u` and its radii; flat fills, no outlines, glow or gradients.
+- [ ] Map shapes come from the unit `u` and its radii; flat fills, no outlines or gradients; glow only on trains.
 - [ ] System font only.
 - [ ] No new text that could be cut.
 - [ ] DOM motion is transform/opacity only, on an existing curve; no blur or shadow on panels.
