@@ -155,10 +155,11 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 1. **The DOM interface animates `transform` and `opacity` only.** Never width, height, colour, background, shadow or filters. A tick filling a ring is a coloured layer fading and scaling in, not a background transition.
 2. **No blur, no shadows on panels.** They sit over a WebGL map that redraws every frame, so a `backdrop-filter` would be recomputed every frame. Panels are solid near-black instead, which on a black map looks the same.
 3. **The DOM interface uses CSS transitions only.** No JavaScript animation of the interface.
-4. **The map is the exception, on purpose.** Trains move every frame in a `requestAnimationFrame` loop that draws to WebGL (120 Hz on ProMotion phones). That loop only uploads buffers and draws; it never touches the DOM layout. The card text is the one DOM write it makes, 4 times a second, and only when the text changed.
+4. **The map is the exception, on purpose.** Trains move in a `requestAnimationFrame` loop that draws to WebGL. That loop only uploads buffers and draws; it never touches the DOM layout. The card text is the one DOM write it makes, 4 times a second, and only when the text changed.
 5. **One motion, one curve.** Reuse the curves below rather than inventing one for an element.
 6. **Never retime existing motion, and never go faster.** Changes ship one at a time and are judged by feel on a phone.
 7. **Respect `prefers-reduced-motion`.** Transitions and the pulse beside "Now" are off, the map jumps instead of flying when it refits, and the selected train's ring stops pulsing. Trains still move, because their movement is the information.
+8. **Draw a frame only when something moves (1.7, battery).** A frame is drawn when the fastest train could have moved 0.2px since the last one (`STEP`, `VMAX` in `index.html`), and at least 4 times a second. Trains are slow on screen, so at 1x that is about 4 frames a second with the whole city in view, 10 at zoom 12, 40 at zoom 14 and the phone's full rate from about zoom 15; the 10x and 60x clocks raise it in step. Anything else runs at the full rate at once: the map moving, a cross-fade, the picked train's pulse, following a train, any change of lines, direction, card or clock. Only trains on or near the screen are built and drawn.
 
 | Token | Value | Used for |
 |---|---|---|

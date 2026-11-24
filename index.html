@@ -572,8 +572,9 @@ function sizes(z) {
   // a train dot keeps a size you can see and tap even where the track is thin
   return { u, tw: u, tl, g, band, lane, rad: u * .3, st, dot: Math.max(u, 3.2) };
 }
-// CSS px per metre on the map at zoom z (512 px world tiles; Delhi's latitude)
-const pxPerM = z => 512 * 2 ** z / (40075016.7 * Math.cos(28.6 * Math.PI / 180));
+// CSS px per metre on the map at zoom z (512 px world tiles), at latitude lat: the screen's centre when known, else
+// central Delhi. Across the network this changes the scale by under half a percent.
+const pxPerM = (z, lat = 28.6) => 512 * 2 ** z / (40075016.7 * Math.cos(lat * Math.PI / 180));
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint32Array), stV: new Buf(Float32Array), stMinorV: new Buf(Float32Array), vis: 1, visT: 1,
     headV: new Buf(Float32Array), fxV: new Buf(Float32Array), occV: new Buf(Float32Array),
@@ -601,6 +602,7 @@ function makeGpu() {
     else { g.idx = gl.UNSIGNED_SHORT; for (const k of ['lineI', 'trI', 'pickI']) g[k] = new Buf(Uint16Array); selDirty = true; }
     g.staticDirty = true;
   };
+  g.fading = () => g.icon !== g.iconT || g.vis !== g.visT; // a dot-to-train or show/hide cross-fade is running
   const LINE_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 4]], TR_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 1], [8, 1]], PT_LAYOUT = [[0, 2], [2, 2], [4, 4], [8, 1], [9, 1]];
   function bindAttrs(gl, layout, stride) {
     layout.forEach(([off, size], i) => { gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, size, gl.FLOAT, false, stride * 4, off * 4); });
@@ -627,7 +629,8 @@ function makeGpu() {
     unbind(gl, 5);
     // Trains snap between a dot and a train at ICON_Z (with a little give, so a pinch resting on the line doesn't
     // flicker), and cross-fade in 200 ms: only opacity changes, never the shape.
-    const now = performance.now(), dt = Math.min(100, now - (g.lastT || now)); g.lastT = now;
+    // dt is capped at about one 30 Hz frame, so the first frame after a rest (or a tab coming back) doesn't jump a fade
+    const now = performance.now(), dt = Math.min(34, now - (g.lastT || now)); g.lastT = now;
     if (z > ICON_Z + .1) g.iconT = 1; else if (z < ICON_Z - .1) g.iconT = 0;
     g.icon = RM.matches ? g.iconT : g.icon + Math.sign(g.iconT - g.icon) * Math.min(Math.abs(g.iconT - g.icon), dt / 200);
     const fade = g.icon * g.icon * (3 - 2 * g.icon);
@@ -719,11 +722,15 @@ function buildDynamic(t) {
   const g = gpu; g.headV.reset(); g.fxV.reset(); g.occV.reset(); g.trV.reset(); g.trI.reset(); g.pickV.reset(); g.pickI.reset();
   const day = dayKey(realNow()); if (D.day !== day) useDay(D, day); // Saturday and Sunday run their own timetables
   trains = trainsAt(act, t, null);
-  const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
+  const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z, cam.lat()), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
+  // Only trains on screen, or near enough that their nose or glow could reach it, are drawn. Every train is still
+  // placed above, for the count, taps and the card. The margin is a train's length and its glow, in Mercator units.
+  const [bx0, by0, bx1, by1] = cam.bounds(), mg = (S.tl + 48) / (512 * 2 ** z);
   const lit = new Map(); // station dots with a train in them, and how far in
   for (const o of trains) {
-    const [x, y] = o.pos, [tx, ty] = headingAt(o.r, o.d);
-    const isPick = picked && picked.r === o.r && picked.s0 === o.s0;
+    const [x, y] = o.pos, isPick = picked && picked.r === o.r && picked.s0 === o.s0;
+    if (!isPick && (x < bx0 - mg || x > bx1 + mg || y < by0 - mg || y > by1 + mg)) continue;
+    const [tx, ty] = headingAt(o.r, o.d);
     const sp = trainSpan(o, half);
     if (sp.nose - sp.tail > .5) ribbon(g.trV, g.trI, o.r, sp.tail, sp.nose, ppm, padM);
     g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, INK[0], INK[1], INK[2], 1, 1, 0);
@@ -753,7 +760,8 @@ function mapLibreCamera(ml) {
   map.touchZoomRotate.disableRotation(); map.keyboard.disableRotation();
   const c = {
     kind: 'maplibre', map,
-    zoom: () => map.getZoom(),
+    zoom: () => map.getZoom(), lat: () => map.getCenter().lat, busy: () => map.isMoving(),
+    bounds: () => { const b = map.getBounds(); return [...merc(b.getWest(), b.getNorth()), ...merc(b.getEast(), b.getSouth())]; },
     project: (x, y) => { const p = map.project(unmerc(x, y)); return [p.x, p.y]; },
     center: (x, y) => map.setCenter(unmerc(x, y)),
     fit: (b, anim) => map.fitBounds([unmerc(b[0], b[3]), unmerc(b[2], b[1])], { padding: pad(), duration: anim && !RM.matches ? 900 : 0, maxZoom: 13.5 }),
@@ -789,7 +797,8 @@ function canvasCamera() { // stand-alone WebGL camera with pan, pinch and wheel,
   const ws = () => 512 * Math.pow(2, v.z);
   let anim = null;
   const c = {
-    kind: 'canvas', zoom: () => v.z,
+    kind: 'canvas', zoom: () => v.z, lat: () => unmerc(v.x, v.y)[1], busy: () => !!anim,
+    bounds: () => [...c.unproject(0, 0), ...c.unproject(W(), H())],
     project: (x, y) => [(x - v.x) * ws() + W() / 2, (y - v.y) * ws() + H() / 2],
     unproject: (px, py) => [(px - W() / 2) / ws() + v.x, (py - H() / 2) / ws() + v.y],
     center: (x, y) => { v.x = x; v.y = y; labelsDirty = true; },
@@ -1029,14 +1038,27 @@ function paintCard() {
 }
 
 /* ---------- loop ---------- */
-let lastUi = 0;
+// Battery: a frame is drawn only when something on it would visibly move. Trains are slow on screen: at 1x, the
+// fastest (VMAX) crosses 0.7 px a second with the whole city in view and 8 px a second at zoom 14, so redrawing them
+// 120 times a second mostly redraws the same picture. Each new frame waits until the fastest train could have moved
+// STEP css px, and never longer than MAX_GAP. Anything else redraws at once and at the full rate: the map moving,
+// a cross-fade, the picked train's pulse, following a train, or any change of lines, direction, card or clock.
+const VMAX = 34, STEP = .2, MAX_GAP = 250; // m/s (the Airport Express's 120 km/h), css px, ms
+let lastUi = 0, lastDraw = -Infinity, seen = [];
 function frame(now) {
   const t = curT();
-  if (selDirty) { selDirty = false; buildStatic(); }
-  buildDynamic(t);
+  const state = [act, picked, sim, speed, follow, sel.size];
+  const urgent = selDirty || labelsDirty || cam.busy() || gpu.fading() || (picked && picked.kind === 'train' && !RM.matches)
+    || state.some((v, i) => v !== seen[i]);
+  const gap = Math.min(MAX_GAP, 1000 * STEP / (VMAX * pxPerM(cam.zoom(), cam.lat()) * (sim ? speed : 1)));
+  if (urgent || now - lastDraw >= gap - 1) {
+    seen = state; lastDraw = now;
+    if (selDirty) { selDirty = false; buildStatic(); }
+    buildDynamic(t);
+    if (follow && picked && picked.o) cam.center(picked.o.pos[0], picked.o.pos[1]);
+    cam.redraw();
+  }
   if (popPending && $('menu').hidden) { popPending = false; showPop(); }
-  if (follow && picked && picked.o) cam.center(picked.o.pos[0], picked.o.pos[1]);
-  cam.redraw();
   if (labelsDirty) { labelsDirty = false; drawLabels(); }
   if (now - lastUi > 250) { lastUi = now; paintClock(); paintCounts(); paintCard(); paintDisc(); }
   requestAnimationFrame(frame);
