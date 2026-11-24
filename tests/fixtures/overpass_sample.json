@@ -1,0 +1,13 @@
+{"version": 0.6, "osm3s": {"timestamp_osm_base": "2026-11-20T10:00:00Z"},
+ "elements": [
+  {"type": "node", "id": 1, "lat": 28.66779, "lon": 77.22810, "tags": {"railway": "station", "station": "subway", "name": "Kashmere Gate"}},
+  {"type": "node", "id": 2, "lat": 28.66560, "lon": 77.22930, "tags": {"railway": "station", "station": "subway", "name": "Kashmere Gate", "line": "Violet"}},
+  {"type": "way", "id": 3, "center": {"lat": 28.71420, "lon": 77.16740}, "tags": {"railway": "station", "subway": "yes", "name": "Adarsh Nagar Metro Station"}},
+  {"type": "node", "id": 4, "lat": 28.55230, "lon": 77.05800, "tags": {"public_transport": "station", "subway": "yes", "name": "द्वारका सेक्टर २१", "name:en": "Dwarka Sector 21"}},
+  {"type": "node", "id": 5, "lat": 28.67650, "lon": 77.10213, "tags": {"railway": "station", "station": "subway", "name": "Paschim Vihar West"}},
+  {"type": "node", "id": 6, "lat": 28.67210, "lon": 77.11220, "tags": {"railway": "station", "station": "subway", "name": "Paschim Vihar East"}},
+  {"type": "node", "id": 7, "lat": 28.38910, "lon": 77.31750, "tags": {"railway": "station", "station": "light_rail", "name": "Sihi"}},
+  {"type": "node", "id": 8, "lat": 28.57085, "lon": 77.32605, "tags": {"railway": "station", "network": "Delhi Metro", "name": "Noida Sector 18"}},
+  {"type": "node", "id": 9, "lat": 28.60300, "lon": 77.20100, "tags": {"railway": "station", "station": "subway", "name": "Central Secretariat"}},
+  {"type": "node", "id": 10, "lat": 28.60100, "lon": 77.20000, "tags": {"railway": "station", "station": "subway"}}
+ ]}
