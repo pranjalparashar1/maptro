@@ -102,7 +102,7 @@ The time is the phone's, unless it is more than 2 minutes off the server's (chec
 Shown under the line picker when exactly one line is chosen. It is a native `<select>` laid invisibly over a pill, so the phone's own picker opens. Options: "Both directions" (the default, and what any new choice of line resets to), "Rithala → Shaheed Sthal" and "Shaheed Sthal → Rithala". The pill reads "Both directions" or "To Rithala". Only trains, and station departures, in the chosen direction are shown; the track stays. Which way each route runs comes from `directions()` in the core block.
 
 ### Count note
-"19 trains active", with the line's dot: a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
+"19 trains active", with the line's dot: a small pill. Off a weekday it names the timetable: "19 trains active · Sunday timetable", or "· Holi timings" on a day DMRC announces its own; it also drops in when the timetable changes (a simulation reaching 3 am, or skipping into another day). It is a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
 
 ### Trains, track and stations
 Flat fills, round geometry, no outlines; the trains' faint glow is the one exception. Everything grows with zoom (1.4). The track's width comes from zoom (`TRACK_W` in `index.html`): 1.5px with all of Delhi on screen, 5.6px at zoom 12, 18px at 15 and 28px at the closest. Every other size comes from one unit, `u`, a train's width, which is the track's width / 2.12 (`sizes()`).
@@ -141,10 +141,10 @@ A sheet at the bottom: line colour bar, "Yellow Line", "to Huda City Centre", cl
 Name, a dot for each line, close. Body: the next four departures, each with minutes and destination.
 
 ### Quiet hours
-When none of the chosen lines has a train running: "The trains are asleep", "Service runs from about 5:30 to 23:30.", and a white "Skip to 8 am".
+When none of the chosen lines has a train running: "The trains are asleep", "Service runs from about 5:30 to 23:30.", and a white "Skip to 8 am". The sentence and the button follow the day being skipped to: "On Sundays, service runs from about 7:00 to 23:30." for a line that starts late on Sundays, and on a special day "Holi: trains run from 14:30." with "Skip to 14:30". The skip always lands on a real date, so skipping from 1 am on a Sunday shows Sunday's 8 am, and a simulation that runs past 3 am moves on to the next day's timetable.
 
 ### Disclaimer
-A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, where the timetable comes from and how old it is (from `data.json`'s `meta`), which day's timetable is running and that holidays aren't marked, whether the phone's clock is being corrected, and credits OpenStreetMap and OpenFreeMap. It fades out while a card is open.
+A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, where the timetable comes from and how old it is (from `data.json`'s `meta`), which day's timetable is running ("The simulated day runs …" during a simulation), any special timings that day, and that special days are added by hand when DMRC announces them, whether the phone's clock is being corrected, and credits OpenStreetMap and OpenFreeMap. It fades out while a card is open.
 
 ### Buttons
 `.btn`: 44px, pill, `--surface2`. `.btn.act` / `.btn.on`: white fill, black text. All buttons use `.press`.
