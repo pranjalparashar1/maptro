@@ -1,0 +1,139 @@
+# Weekly: has DMRC published a new GTFS feed on Delhi Open Transit Data? And are the stations
+# still where OpenStreetMap puts them?
+#
+# feed: downloads the feed and compares its contents with scripts/gtfs_feed.json. When it is new,
+#   it runs scripts/audit.py on it, tries scripts/build.py, keeps everything as a run artifact, and
+#   opens one issue per new feed. It does not open a pull request or touch data.json: build.py's
+#   fixes are keyed to the 2023 feed's stop ids, so a new feed needs a person to look first.
+#   Once a new feed is adopted, run `python3 scripts/gtfs_feed.py record ...` so the watch moves on.
+# osm: runs scripts/audit_osm.py against the Overpass API and puts the report in the run summary.
+#   It never fails the run, as Overpass is often busy.
+name: Check GTFS feed and station coordinates
+
+on:
+  schedule:
+    - cron: "30 3 * * 1"  # Mondays 03:30 UTC (09:00 IST)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: check-gtfs
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the feed and compare
+        id: check
+        run: python3 scripts/gtfs_feed.py check --download feed.zip --report report.md
+
+      - name: Install pandas
+        if: steps.check.outputs.changed == 'true'
+        run: pip install pandas numpy
+
+      - name: Audit and build the new feed
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          mkdir -p feed out
+          unzip -q -o -j feed.zip '*.txt' -d feed
+          # audit.py and build.py write into the working directory, so run them in out/.
+          # Neither is allowed to fail the job: a broken build is itself the news.
+          (cd out && python3 ../scripts/audit.py ../feed > audit.txt 2>&1; echo "audit.py exit $?" >> audit.txt)
+          (cd out && python3 ../scripts/build.py ../feed > build.log 2>&1; echo "build.py exit $?" >> build.log)
+          python3 - <<'EOF' > out/diff.md
+          import json, os
+          old = json.load(open("data.json"))
+          if not os.path.exists("out/data.json"):
+              print("build.py did not produce a data.json; see build.log."); raise SystemExit
+          new = json.load(open("out/data.json"))
+          so, sn = old["stops"], new["stops"]
+          print("| | data.json now | rebuilt from new feed |\n|---|---:|---:|")
+          print(f"| stops | {len(so)} | {len(sn)} |\n| routes | {len(old['routes'])} | {len(new['routes'])} |")
+          print(f"| size | {os.path.getsize('data.json')} B | {os.path.getsize('out/data.json')} B |\n")
+          gone = sorted(set(so) - set(sn), key=lambda k: so[k][0]); added = sorted(set(sn) - set(so), key=lambda k: sn[k][0])
+          renamed = [k for k in so if k in sn and so[k][0] != sn[k][0]]
+          print("Stops gone: " + (", ".join(f"{k} {so[k][0]}" for k in gone) or "none"))
+          print("\nStops added: " + (", ".join(f"{k} {sn[k][0]}" for k in added) or "none"))
+          print("\nStop ids that now name a different station (STOP_FIXES and STOP_INSERTS in build.py use ids): "
+                + (", ".join(f"{k} {so[k][0]} -> {sn[k][0]}" for k in renamed) or "none"))
+          EOF
+
+      - name: Keep the feed and outputs
+        if: steps.check.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmrc-gtfs-${{ steps.check.outputs.fingerprint }}
+          path: |
+            feed.zip
+            report.md
+            out/
+          retention-days: 90
+
+      - name: Open an issue for the new feed
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FP: ${{ steps.check.outputs.fingerprint }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          short=${FP:0:12}
+          if [ -n "$(gh issue list --state all --search "$short in:title" --json number --jq '.[].number')" ]; then
+            echo "An issue for feed $short already exists."; exit 0
+          fi
+          {
+            cat report.md
+            echo; echo "### Rebuilt data.json, compared with the current one"; echo
+            cat out/diff.md
+            echo; echo "### build.py (last 40 lines)"; echo; echo '```'; tail -n 40 out/build.log; echo '```'
+            echo; echo "### audit.py (first 60 lines)"; echo; echo '```'; head -n 60 out/audit.txt; echo '```'
+            echo; echo "The feed zip, the rebuilt data.json and the full logs are in the run's artifacts: $RUN"
+            echo; echo "Nothing was changed in the repository. To adopt the feed: check that STOP_FIXES, STOP_INSERTS,"
+            echo "calibration.json and frequency.json still fit it, rebuild, then run"
+            echo "\`python3 scripts/gtfs_feed.py record path/to/feed --source \"...\"\` so this watch stops reporting it."
+          } > issue.md
+          gh issue create --title "New DMRC GTFS feed on Open Transit Data ($short)" --body-file issue.md
+
+      - name: Summary
+        if: always()
+        run: |
+          [ -f report.md ] && cat report.md >> "$GITHUB_STEP_SUMMARY"
+          [ -f out/diff.md ] && { echo; cat out/diff.md; } >> "$GITHUB_STEP_SUMMARY"
+          true
+
+  osm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compare station coordinates with OpenStreetMap
+        run: |
+          python3 scripts/audit_osm.py --save-osm osm.json --out osm-report.md --fixes stop_coord_fixes.json
+          cat osm-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: osm-audit
+          path: |
+            osm-report.md
+            stop_coord_fixes.json
+            osm.json
+          if-no-files-found: ignore
+          retention-days: 30

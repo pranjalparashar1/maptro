@@ -17,6 +17,10 @@ python3 scripts/build.py path/to/DMRC_GTFS   # writes data.json
 ```
 Then serve the folder (`python3 -m http.server`) and open index.html.
 
+## Data checks
+- `python3 scripts/audit_osm.py` compares every station in data.json with its OpenStreetMap station (via the Overpass API) and lists the ones more than 150 m off, plus any it can't match by name. `--fixes stop_coord_fixes.json` writes OSM's coordinates for those, for review; nothing is applied until it's copied into `STOP_FIXES` in build.py with its source. Without network access, run `--print-query` on overpass-turbo.eu and pass the exported JSON with `--osm`.
+- `.github/workflows/check-gtfs.yml` runs every Monday (and by hand from the Actions tab). It downloads DMRC's GTFS from Open Transit Data and compares its contents with `scripts/gtfs_feed.json`. If DMRC has published a new feed, it audits and test-builds it, keeps the results as a run artifact and opens an issue. It also runs the OSM check and puts the report in the run summary.
+
 ## The page
 - `index.html` is the whole app, with no build step. It draws the lines, stations and trains with WebGL as a MapLibre GL custom layer over an OpenStreetMap basemap (OpenFreeMap vector tiles in Maptro's own true-black style). MapLibre 4.7.1 comes from jsDelivr (unpkg as a second try). If neither loads, the same WebGL renderer runs on its own canvas with its own pan and pinch, just without the basemap.
 - It opens on the Airport Express. Pick lines from the dropdown; only those lines, their stations and their trains are drawn. Station names appear by zoom level and never overlap. The choice is remembered in the browser.
@@ -30,3 +34,7 @@ How it looks, moves and behaves, and the checklist for any change: [DESIGN.md](D
 node --test tests/*.test.mjs
 ```
 They load the `/*<core>*/` block of index.html (all the timetable and position logic) and check it against data.json.
+```
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+These cover the two data-check scripts, offline, against fixtures in `tests/fixtures/`.

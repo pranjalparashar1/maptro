@@ -1,0 +1,23 @@
+{
+ "fingerprint": "bc552b2d9acbfb906b5fd4b9cc34261c3dc7b195005f87516cd4e2053d446947",
+ "source": "DMRC GTFS from Delhi Open Transit Data, updated 10 Aug 2023 (byte-identical mirror at github.com/KunalK0a2/Delhi_Metro_Route_Planner dmrc_gtfs/, read 24 Nov 2026)",
+ "summary": {
+  "files": [
+   "agency.txt",
+   "calendar.txt",
+   "routes.txt",
+   "shapes.txt",
+   "stop_times.txt",
+   "stops.txt",
+   "trips.txt"
+  ],
+  "agency": 1,
+  "stops": 262,
+  "routes": 36,
+  "trips": 5438,
+  "stop_times": 128434,
+  "shapes": 6643,
+  "start_date": "20190101",
+  "end_date": "20251231"
+ }
+}
