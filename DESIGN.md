@@ -138,13 +138,24 @@ A dropdown that unfolds from the pill. Header "Lines" with All and None. One row
 A sheet at the bottom: line colour bar, "Yellow Line", "to Huda City Centre", close. Body: minutes to the next stop and its name (or "At" while dwelling). Footer: "Scheduled" or "Estimated", and Follow. The frame is built once when you tap; only the body text updates (4 times a second, and only when it changes), so a finger on Follow is never under a node that was just rebuilt.
 
 ### Station card
-Name, a dot for each line, close. Body: the next four departures, each with minutes and destination.
+Name, a code for each line, close. Body: the next four departures, each with minutes, the line's code and the destination.
+
+### Line codes (1.11)
+A line's short code in black on its colour, in a small pill (18px high, 11px, 700): R, Y, B, G, V, P, M, GY (Grey), AE (Airport Express), AQ (Aqua), RM (Rapid Metro), from `CODES` in `index.html`. They appear where a line would otherwise be told by colour alone: the station card and the text view. Screen readers hear the line's name instead. The line picker and train card already name the line in words, so they keep their dot and bar. Not drawn on the map: the track's colour plus a tap on a station is enough, and codes along the lines would be clutter.
+
+### Text view (1.11)
+The map as a list, for screen readers and keyboards, and anyone who'd rather read than look. It shows the chosen lines (and direction): each line's code and name, how many trains are running, then every station in riding order with its next train to each destination ("to New Delhi in 3 min"). It is a native `<dialog>`, full screen in `--bg`, closed with its close button or Escape. While open, only the times are rewritten, every 15 seconds and only when they change, so a screen reader keeps its place.
+
+Nothing on the map shows it. Its link, "Text view", is the first thing on the page: hidden until it has keyboard focus (then it drops in at the top as a pill), and the first thing a screen reader reads. The Disclaimer links to it too.
 
 ### Quiet hours
 When none of the chosen lines has a train running: "The trains are asleep", "Service runs from about 5:30 to 23:30.", and a white "Skip to 8 am". The sentence and the button follow the day being skipped to: "On Sundays, service runs from about 7:00 to 23:30." for a line that starts late on Sundays, and on a special day "Holi: trains run from 14:30." with "Skip to 14:30". The skip always lands on a real date, so skipping from 1 am on a Sunday shows Sunday's 8 am, and a simulation that runs past 3 am moves on to the next day's timetable.
 
 ### Disclaimer
-A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, where the timetable comes from and how old it is (from `data.json`'s `meta`), which day's timetable is running ("The simulated day runs …" during a simulation), any special timings that day, and that special days are added by hand when DMRC announces them, whether the phone's clock is being corrected, and credits OpenStreetMap and OpenFreeMap. It fades out while a card is open.
+A native `<details>` pill at the bottom left. Open, it says the project is personal and not DMRC's, that positions are scheduled or estimated, where the timetable comes from and how old it is (from `data.json`'s `meta`), which day's timetable is running ("The simulated day runs …" during a simulation), any special timings that day, and that special days are added by hand when DMRC announces them, whether the phone's clock is being corrected, and credits OpenStreetMap and OpenFreeMap. Its last line is "Maptro 1.11 · Text view · What's new" (the version, then links to the text view and to `CHANGELOG.md`). It fades out while a card is open.
+
+### Install and offline (1.11)
+`manifest.webmanifest` makes Maptro installable: standalone, `#000` background and theme, and an icon of the Yellow and Blue lines crossing at a white interchange on true black (`icons/`). `sw.js` keeps the page, the timetable and MapLibre, so once opened it opens again with no signal. The page and timetable are fetched fresh whenever the network answers within 3 seconds, so a new timetable is never a visit behind. Basemap tiles are kept as they are seen (600 at most); elsewhere the map is black and the trains still run.
 
 ### Buttons
 `.btn`: 44px, pill, `--surface2`. `.btn.act` / `.btn.on`: white fill, black text. All buttons use `.press`.
@@ -186,7 +197,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 ## 8. Copy
 
 - Short, plain, warm. Sentence case, no all-caps labels. One line wherever possible.
-- Words in use: "Lines", "All", "None", "Now", "Both directions", "To …", "19 trains active", "Zoom in or pick a line to see trains", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
+- Words in use: "Lines", "All", "None", "Now", "Both directions", "To …", "19 trains active", "Zoom in or pick a line to see trains", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload", "Text view", "4 trains running", "to New Delhi in 3 min", "No more departures", "What's new".
 - Never call a position or the clock live or real-time.
 
 ---
@@ -201,6 +212,8 @@ Where a Kiron rule didn't carry over as-is, and why:
 - **Orange and blue accents** → not copied. Colour on Maptro belongs to the metro lines, so the chrome is greyscale and the action colour is white.
 - **Glass and blur** (Maptro's earlier look) → removed. It cost a blur every frame over a moving map, and on true black a solid panel reads the same.
 - **The train count moved out of the line picker** into the count note. A number that never stops changing beside a label read as part of the label; shown for a moment after a change, it answers "how many?" exactly when it is asked.
+- **No modals** → one exception, the text view (1.11). It replaces the map rather than sitting over it, and only for someone who asked for it; a native `<dialog>` gives it Escape and keeps keyboard focus inside for free.
+- **Visual regression snapshots** (from the Fable audit) → not used. WebGL and system fonts render differently from one machine to the next, so saved pictures fail for reasons that aren't bugs, and looks are judged on a phone anyway (section 10). The browser check reads a few pixels instead (the track in its colour, trains in white) and keeps its screenshots to look at.
 - **The train card no longer shows the trip's start time.** It was a long uppercase line that few would read; the train's place on the map already identifies it.
 
 ---
@@ -223,5 +236,6 @@ From Kiron's record, and they apply here too:
 - [ ] DOM motion is transform/opacity only, on an existing curve; no blur or shadow on panels.
 - [ ] Works with reduced motion.
 - [ ] 44px touch targets; native controls where the phone has one; haptic switch on new buttons.
-- [ ] `node --test tests/*.test.mjs` passes.
+- [ ] `node --test tests/*.test.mjs` passes, and so does `scripts/dev/browser-check.cjs` (CI runs both).
+- [ ] A new version: `VERSION` in `index.html` and `sw.js`, and an entry at the top of `CHANGELOG.md`.
 - [ ] Looked at on a real phone.
