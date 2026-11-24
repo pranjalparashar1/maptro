@@ -41,7 +41,7 @@ Rules:
 - Resting layers step up from black: page `--bg`, panels `--surface` with a 1px `--line` hairline, buttons and pressed rows `--surface2`.
 - State colours are few and small: the green dot beside "Live", amber when the clock runs fast, a white fill when Follow is on.
 - The primary action ("Skip to 8 am", "Tap to reload", Follow when on) is white with black text.
-- Line colours are DMRC's own, nudged brighter where they read too dark on black (`SHOW` in `index.html`). They are drawn flat: no gradients, glow, outlines or added light.
+- Line colours are DMRC's own hues, pushed to full vividness for true black in 1.4 (`SHOW` in `index.html`): Pink stays light and Magenta deep, and Rapid Metro is a paler sky blue than the Blue Line, so neighbours never read as one line. They are drawn flat: no gradients, glow, outlines or added light.
 - **Full-strength colour.** The track is each line's colour at full strength (`TONES.track` = 1), as bright as the very first Maptro; a toned-down track was tried in 1.2 and read as dull. Station dots are a step lighter (`TONES.platform` = 1.2, OKLab lightness, hue kept); interchange dots are `--ink`.
 - Trains are `--ink`, one solid colour, with a faint glow around them. They are the brightest thing on the map and the same on every line; the track under a train says which line it is.
 
@@ -72,7 +72,7 @@ The system font (`-apple-system`, SF Pro on iPhone). No web font loads: it is na
 | Minutes to next stop | 22px | 700, tabular numerals |
 | Card subtitle, departures | 14px | 400-500 |
 | Small notes ("Scheduled", Disclaimer) | 13px | 600 |
-| Station labels on the map | 12px (13px terminals) | 600 / 700, `--ink`, no halo |
+| Station labels on the map | 11px zoomed out to 13px close in (terminals 1px more) | 500 / 600, `--ink`, no halo |
 
 Numbers that change (the clock, train count, minutes) use tabular numerals so they don't jitter.
 
@@ -103,23 +103,30 @@ Shown under the line picker when exactly one line is chosen. It is a native `<se
 "19 trains active", with the line's dot: a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
 
 ### Trains, track and stations
-Flat fills, round geometry, no outlines; the trains' faint glow is the one exception. Every size comes from one unit, `u`, a train's width (`sizes()` in `index.html`): 3px zoomed out, growing to 8px.
+Flat fills, round geometry, no outlines; the trains' faint glow is the one exception. Everything grows with zoom (1.4). The track's width comes from zoom (`TRACK_W` in `index.html`): 1.5px with all of Delhi on screen, 5.6px at zoom 12, 18px at 15 and 28px at the closest. Every other size comes from one unit, `u`, a train's width, which is the track's width / 2.12 (`sizes()`).
 
 | Part | Size |
 |---|---|
 | Track | `2u + g` (`g = .12u`): exactly two trains, one per direction, in the line's full colour |
-| Station | a dot `2u + g + .9u` across, a step lighter than its line; white at an interchange |
+| Station | a dot `2u + g` + `max(.9u, 1.8px)` across, a step lighter than its line; white at an interchange |
 | Train, zoomed in | a bullet `u` wide and `4.6u` long, solid `--ink`, faint glow |
-| Train, zoomed out | a dot `1.7u` across, solid `--ink`, faint glow |
+| Train, zoomed out | a dot `1.7 × max(u, 3.2px)` across, solid `--ink`, faint glow, so it stays visible and tappable on a thin track |
 
-- **Dot or train, never in between.** Trains are dots below zoom 12.4 (`ICON_Z`) and trains above it, with 0.1 of give either side so a pinch resting near it doesn't flicker. Crossing it cross-fades the two in 200 ms: only opacity changes, never the shape. (1.2 blended the shapes by zoom, which left a "rugby ball" in between.)
+### Zoom: show less as you pull back
+The further out, the less there is: a whole-city view is the network's shape, and detail arrives as you zoom in.
+
+- **Trains** hide below zoom 11.2 (`TRAIN_Z`, with 0.1 of give either side) when more than one line is chosen, fading out and back in over 250 ms. Then only the track shows, and a quiet note, "Zoom in or pick a line to see trains", sits where the count note goes (muted text on a small panel; it waits while the count note, the line picker or a card is showing). With one line chosen, its trains always show: one line is never too busy.
+- **Stations:** interchanges and terminals always show. Ordinary stations fade in between zoom 10.7 and 11.3 (`MINOR_Z`), or always with one line chosen. A station that isn't shown can't be tapped.
+- **Names** come in by importance: terminals from zoom 9.4, interchanges from 10.6, the rest from 11.8 (10.4 with one line chosen). Each fades up over half a zoom level from where it first appears, rather than popping on.
+
+- **Dot or train, never in between.** Trains are dots below zoom 12.8 (`ICON_Z`) and trains above it, with 0.1 of give either side so a pinch resting near it doesn't flicker. Crossing it cross-fades the two in 200 ms: only opacity changes, never the shape. (1.2 blended the shapes by zoom, which left a "rugby ball" in between.)
 - **Trains bend with the track.** A zoomed-in train is not a picture turned to face its heading. It is a ribbon laid along the track's own points from its tail to its nose, rebuilt every frame and drawn on the GPU, so through a bend every part of the train follows the curve. The bullet shape is worked out per pixel along and across that ribbon. (A rigid sprite has to pick one angle, so in a bend it cut the corner and swung round late.)
 - **Trains merge into stations.** Station dots are drawn over the trains. Arriving, a train's nose stops at the station's centre and its tail closes up behind it, so it slides into the dot; while it waits, its light sits in the dot as a white core (in the line's colour at an interchange), growing as the train goes in and shrinking as it comes out. Leaving is the reverse. Zoomed out, the train dot simply slides under the station dot.
 - Trains run on the left side of the track, as Delhi's do. The picked train gets a white outline, `2.5g` out, that pulses.
 - Real station footprints were considered and not used: most of Delhi's stations are underground and have no footprint, and the elevated ones are a few pixels across until zoom 15.
 
 ### Station names
-Plain text in `--ink`, no halo or shadow (it read as a comic). Terminals stand out by weight and size alone (13px 700 against 12px 600), never by colour. Names never overlap each other or another interchange or terminal dot.
+Plain text in `--ink`, no halo or shadow (it read as a comic), in a light weight (500; 1.3's 600/700 read too bold). Size follows zoom, 11px to 13px. Terminals stand out by weight and size alone (600 and 1px larger), never by colour. Names never overlap each other or another interchange or terminal dot.
 
 ### Line picker
 A dropdown that unfolds from the pill. Header "Lines" with All and None. One row per line: a ring in the line colour that fills with a tick when chosen, and the line's name. Each row is a real `switch` checkbox stretched over the row, so the tap is native and gives the haptic tick. Tapping outside closes it, and the map then fits the chosen lines.
@@ -175,7 +182,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 ## 8. Copy
 
 - Short, plain, warm. Sentence case, no all-caps labels. One line wherever possible.
-- Words in use: "Lines", "All", "None", "Live", "Both directions", "To …", "19 trains active", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
+- Words in use: "Lines", "All", "None", "Live", "Both directions", "To …", "19 trains active", "Zoom in or pick a line to see trains", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
 - Never call a position live or real-time.
 
 ---
