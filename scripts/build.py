@@ -268,7 +268,8 @@ ROUTES_UNCALIBRATED = copy.deepcopy(routes)  # phase4 takes line speeds from the
 if os.path.exists(CAL):
     calibrate(routes, json.load(open(CAL)), names)
 
-meta = dict(feed="DMRC GTFS, Delhi Open Transit Data, updated 10 Aug 2023", fixes=notes)
+# feed_date: when the GTFS was published. No build date: the same inputs must give a byte-identical data.json.
+meta = dict(feed="DMRC GTFS, Delhi Open Transit Data, updated 10 Aug 2023", feed_date="2023-08-10", fixes=notes)
 if os.path.exists(P4):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import phase4
@@ -279,7 +280,7 @@ if os.path.exists(FREQ) and os.path.exists(P4):
     import headways
     fcfg = json.load(open(FREQ))
     routes = headways.apply(routes, stops, fcfg, json.load(open(P4)), phase4)
-    meta["frequency"] = dict(source=fcfg["source"], peak_bands=fcfg["peak_bands"], peak_bands_source=fcfg["peak_bands_source"])
+    meta["frequency"] = dict(source=fcfg["source"], as_of=fcfg["as_of"], peak_bands=fcfg["peak_bands"], peak_bands_source=fcfg["peak_bands_source"])
 
 json.dump(dict(colors=col, routes=routes, stops=stops, meta=meta), open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(os.path.getsize(OUT), len(routes), sum(len(x['shape']) for x in routes))

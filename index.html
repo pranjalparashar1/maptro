@@ -58,7 +58,7 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #pick[aria-expanded=true] .chev{transform:rotate(180deg)}
 #clockw{margin-left:auto}
 #clock{gap:8px;padding:0 14px;font-variant-numeric:tabular-nums}
-/* the clock is only a control while simulating: live time can't be sped up */
+/* the clock is only a control while simulating: the time now can't be sped up */
 #clockw:not(.sim){pointer-events:none}
 #clockw:not(.sim) .hx{display:none}
 #clock .k{width:9px;height:9px;flex:none;opacity:.55;margin-left:-2px}
@@ -167,8 +167,8 @@ body.carded #disc{opacity:0;pointer-events:none}
     <span class="dots" id="dots"></span><span class="lbl" id="plbl">Lines</span>
     <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button></span>
-  <span class="hw" id="clockw"><button id="clock" class="pill panel press" aria-label="Time now"><span class="t" id="time">--:--</span><span class="s" id="spd">Live</span><svg class="k" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l3.5 3.5-3.5 3.5M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
-  <span class="hw" id="livew" hidden><button id="live" class="pill panel press" aria-label="Back to live time">Live</button></span>
+  <span class="hw" id="clockw"><button id="clock" class="pill panel press" aria-label="Time now"><span class="t" id="time">--:--</span><span class="s" id="spd">Now</span><svg class="k" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l3.5 3.5-3.5 3.5M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
+  <span class="hw" id="livew" hidden><button id="live" class="pill panel press" aria-label="Back to the time now">Now</button></span>
 </div>
 <div class="top2">
   <span class="hw off" id="dirw"><span id="dir" class="pill panel press" aria-hidden="true">
@@ -191,6 +191,7 @@ body.carded #disc{opacity:0;pointer-events:none}
 <details id="disc" class="panel">
   <summary>Disclaimer <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 7.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
   <p>A personal project, not affiliated with DMRC. Trains are drawn where the published timetable says they should be, so positions are scheduled or estimated, not live.
+  <span id="prov"></span><span id="skew"></span>
   <span id="attr">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors, tiles by <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> (<a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>).</span></p>
 </details>
 
@@ -209,6 +210,26 @@ function unmerc(x, y) {
 // Which timetable runs: 'wkd', 'sat' or 'sun', by the India date. The service day turns over at 03:00, when no
 // trains run, so a train that left before midnight finishes on the timetable it started on.
 const dayKey = (ms = Date.now()) => { const w = new Date(ms + (19800 - 3 * 3600) * 1000).getUTCDay(); return w === 0 ? 'sun' : w === 6 ? 'sat' : 'wkd'; };
+// How far the phone's clock is off, in ms, from a server Date header seen by a request sent at device time t0 and
+// answered at t1. 0 unless it is off by more than SKEW_MIN: phones keep good time, and a Date header is only
+// accurate to the second. A slow answer (over 10 s) can't pin the time down, so it is ignored too.
+const SKEW_MIN = 120000;
+function clockSkew(t0, t1, date) {
+  const server = Date.parse(date || '');
+  if (!Number.isFinite(server) || !(t1 >= t0) || t1 - t0 > 10000) return 0;
+  const off = server + 500 - (t0 + t1) / 2; // the header drops milliseconds, so the server's time is half a second on
+  return Math.abs(off) > SKEW_MIN ? Math.round(off) : 0;
+}
+// What the timetable is and which day's runs today, for the Disclaimer, from data.json's meta.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAY_NAMES = { wkd: 'weekday', sat: 'Saturday', sun: 'Sunday' };
+function provenance(meta, day) {
+  const ymd = s => (s || '').split('-').map(Number), fq = meta.frequency || {};
+  const [fy, fm, fd] = ymd(fq.as_of), [gy, gm] = ymd(meta.feed_date);
+  const src = fq.as_of ? `DMRC's train frequencies as on ${fd} ${MONTHS[fm - 1]} ${fy}, with journey times from its ${MONTHS[gm - 1]} ${gy} timetable tuned to Google Maps`
+    : `DMRC's ${MONTHS[gm - 1]} ${gy} timetable`;
+  return `Timetable: ${src}. Today runs the ${DAY_NAMES[day]} timetable; holidays aren't marked.`;
+}
 // Points every route's starts at that day's departures (data.json routes may carry sat and sun beside starts).
 function useDay(D, day) { for (const r of D.routes) r.starts = r.byDay[day]; D.day = day; return D; }
 // Adds sorted starts for each day, duration and Mercator copies of each shape to the routes in data.json.
@@ -332,6 +353,52 @@ function departures(routes, stopIds, t, lines, max = 4) {
   }
   return res.sort((a, b) => a.time - b.time).slice(0, max);
 }
+// Geometry for the GPU. Index buffers are 32-bit (WebGL2, or WebGL1 with OES_element_index_uint), so no line or
+// train is ever dropped for running past 65,535 vertices. Only a GPU without 32-bit indices gets 16-bit buffers,
+// and then anything past the cap is skipped with a console warning rather than silently.
+const ORIGIN = merc(77.2, 28.6); // Mercator positions on the GPU are relative to this, so float32 keeps metre precision
+const IDX_MAX = { Uint16Array: 0xffff, Uint32Array: 0xffffffff };
+let capWarned = false;
+function fits(I, last) { // can index buffer I hold vertex number `last`?
+  if (last <= (IDX_MAX[I.T.name] ?? Infinity)) return true;
+  if (!capWarned) { capWarned = true; console.warn(`Maptro: ${I.T.name} index cap reached, some geometry was skipped`); }
+  return false;
+}
+class Buf { // growable typed-array writer
+  constructor(T, n = 4096) { this.T = T; this.a = new T(n); this.n = 0; }
+  reset() { this.n = 0; }
+  need(k) { if (this.n + k > this.a.length) { let m = this.a.length * 2; while (m < this.n + k) m *= 2; const b = new this.T(m); b.set(this.a); this.a = b; } }
+  push(...v) { this.need(v.length); for (const x of v) this.a[this.n++] = x; }
+  view() { return this.a.subarray(0, this.n); }
+}
+function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercator
+  const n = pts.length; if (n < 2) return;
+  const base = V.n / 11; if (!fits(I, base + n * 2 - 1)) return;
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const al = fade ? rgba[3] * Math.pow(p[2], 1.6) : rgba[3];
+    V.push(p[0], p[1], a[0], a[1], b[0], b[1], -1, rgba[0], rgba[1], rgba[2], al);
+    V.push(p[0], p[1], a[0], a[1], b[0], b[1], 1, rgba[0], rgba[1], rgba[2], al);
+  }
+  for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+}
+
+// Points of route r from distance d0 to d1 (metres), relative to ORIGIN, each with its distance.
+function routeSlice(r, d0, d1) {
+  const out = [], a = posAt(r, d0); out.push([a[0] - ORIGIN[0], a[1] - ORIGIN[1], d0]);
+  for (let i = lowerBound(r.md, d0 + 1e-6); i < r.md.length && r.md[i] < d1; i++) out.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1], r.md[i]]);
+  const b = posAt(r, d1); out.push([b[0] - ORIGIN[0], b[1] - ORIGIN[1], d1]);
+  return out;
+}
+function ribbon(V, I, r, tail, nose, ppm, padM) {
+  const end = r.md[r.md.length - 1], pts = routeSlice(r, Math.max(r.md[0], tail - padM), Math.min(end, nose + padM));
+  const n = pts.length, base = V.n / 9, len = (nose - tail) * ppm; if (n < 2 || !fits(I, base + n * 2 - 1)) return;
+  for (let i = 0; i < n; i++) {
+    const q = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], x = (q[2] - tail) * ppm;
+    V.push(q[0], q[1], a[0], a[1], b[0], b[1], -1, x, len); V.push(q[0], q[1], a[0], a[1], b[0], b[1], 1, x, len);
+  }
+  for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+}
 /*</core>*/
 </script>
 
@@ -353,7 +420,7 @@ const INK = [.957, .957, .957]; // --ink, the picked train
 // Each line in its own colour at full strength; its platforms a step lighter. Trains are --ink.
 // Tones change lightness in OKLab and keep the hue, so a darker yellow stays yellow rather than going grey.
 const TONES = { track: 1, platform: 1.2 };
-const SPEEDS = [1, 10, 60]; // simulation only; live time always runs at 1x
+const SPEEDS = [1, 10, 60]; // simulation only; the time now always runs at 1x
 // Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
 // true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
 const BLACK_STYLE = { version: 8,
@@ -380,12 +447,20 @@ let D, R, lines = [], sel = new Set(), color = {}, rgb = {}, tone = {};
 let sim = false, speed = 10, simT = 0, lastReal = performance.now();
 let dirs = {}, dirSel = null, act = [], popPending = true; // dirSel: null for both directions, else 0 (A to B) or 1 (B to A)
 let cam, gpu, trains = [], picked = null, follow = false, labelsDirty = true, selDirty = true, refit = false;
-const ORIGIN = merc(77.2, 28.6);
 
 /* ---------- time ---------- */
+// The phone's clock, corrected if checkClock found it more than 2 minutes out.
+let clockOff = 0;
+const realNow = () => Date.now() + clockOff;
+// Asks the server for the time with a tiny uncached HEAD request. (The data.json response can come from the browser's
+// cache, and its Date header is then as old as the copy, so it can't be used.)
+async function checkClock() {
+  try { const t0 = Date.now(), r = await fetch('data.json', { method: 'HEAD', cache: 'no-store' }), t1 = Date.now();
+    clockOff = clockSkew(t0, t1, r.headers.get('Date')); } catch (e) {}
+}
 function curT() {
   const n = performance.now();
-  if (!sim) { lastReal = n; return nowIST(); }
+  if (!sim) { lastReal = n; return nowIST(realNow()); }
   simT = (simT + (n - lastReal) / 1000 * speed) % DAY; lastReal = n; return simT;
 }
 // Simulation starts only from "Skip to 8 am"; speeds can change only inside it.
@@ -481,25 +556,6 @@ void main(){float L=v_len,W=u_tw,hl=L*.5,hw=W*.5,nose=min(W*1.6,L*.4),x0=hl-nose
   gl_FragColor=vec4(.957,.957,.957,1.)*max(clamp(.5-d,0.,1.),glow)*u_a;
 }`;
 
-class Buf { // growable Float32 / Uint16 writer
-  constructor(T, n = 4096) { this.T = T; this.a = new T(n); this.n = 0; }
-  reset() { this.n = 0; }
-  need(k) { if (this.n + k > this.a.length) { let m = this.a.length * 2; while (m < this.n + k) m *= 2; const b = new this.T(m); b.set(this.a); this.a = b; } }
-  push(...v) { this.need(v.length); for (const x of v) this.a[this.n++] = x; }
-  view() { return this.a.subarray(0, this.n); }
-}
-function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercator
-  const n = pts.length; if (n < 2) return;
-  const base = V.n / 11; if (base + n * 2 > 65000) return;
-  for (let i = 0; i < n; i++) {
-    const p = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
-    const al = fade ? rgba[3] * Math.pow(p[2], 1.6) : rgba[3];
-    V.push(p[0], p[1], a[0], a[1], b[0], b[1], -1, rgba[0], rgba[1], rgba[2], al);
-    V.push(p[0], p[1], a[0], a[1], b[0], b[1], 1, rgba[0], rgba[1], rgba[2], al);
-  }
-  for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
-}
-
 // Everything grows with zoom (1.4). The track's width is set by zoom from the table below: a hairline when the whole
 // city is on screen, a broad band close up. One unit, u, the width of a train, is the track's half: the track is two
 // trains wide with a gap of g between them. A station is a dot that takes the whole track and a little more, so a
@@ -519,9 +575,9 @@ function sizes(z) {
 // CSS px per metre on the map at zoom z (512 px world tiles; Delhi's latitude)
 const pxPerM = z => 512 * 2 ** z / (40075016.7 * Math.cos(28.6 * Math.PI / 180));
 function makeGpu() {
-  const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array), stMinorV: new Buf(Float32Array), vis: 1, visT: 1,
+  const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint32Array), stV: new Buf(Float32Array), stMinorV: new Buf(Float32Array), vis: 1, visT: 1,
     headV: new Buf(Float32Array), fxV: new Buf(Float32Array), occV: new Buf(Float32Array),
-    trV: new Buf(Float32Array), trI: new Buf(Uint16Array), pickV: new Buf(Float32Array), pickI: new Buf(Uint16Array), icon: 0, iconT: 0, lastT: 0,
+    trV: new Buf(Float32Array), trI: new Buf(Uint32Array), pickV: new Buf(Float32Array), pickI: new Buf(Uint32Array), icon: 0, iconT: 0, lastT: 0,
     staticDirty: true, gl: null };
   g.init = gl => {
     g.gl = gl;
@@ -539,6 +595,10 @@ function makeGpu() {
     g.isGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
     g.vao = g.isGL2 ? null : gl.getExtension('OES_vertex_array_object');
     g.minmax = g.isGL2 ? gl.MAX : (gl.getExtension('EXT_blend_minmax') || {}).MAX_EXT;
+    // 32-bit indices: built into WebGL2, an extension on WebGL1 that every phone since iOS 8 has. Without it, fall
+    // back to 16-bit buffers and rebuild the track into them.
+    if (g.isGL2 || gl.getExtension('OES_element_index_uint')) g.idx = gl.UNSIGNED_INT;
+    else { g.idx = gl.UNSIGNED_SHORT; for (const k of ['lineI', 'trI', 'pickI']) g[k] = new Buf(Uint16Array); selDirty = true; }
     g.staticDirty = true;
   };
   const LINE_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 4]], TR_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 1], [8, 1]], PT_LAYOUT = [[0, 2], [2, 2], [4, 4], [8, 1], [9, 1]];
@@ -563,7 +623,7 @@ function makeGpu() {
     const L = g.line; gl.useProgram(L.p); gl.uniformMatrix4fv(L.u.u_m, false, M); gl.uniform2fv(L.u.u_res, res);
     gl.bindBuffer(gl.ARRAY_BUFFER, g.b.lineV); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.b.lineI); bindAttrs(gl, LINE_LAYOUT, 11);
     if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0);
-      gl.drawElements(gl.TRIANGLES, g.lineI.n, gl.UNSIGNED_SHORT, 0); }
+      gl.drawElements(gl.TRIANGLES, g.lineI.n, g.idx, 0); }
     unbind(gl, 5);
     // Trains snap between a dot and a train at ICON_Z (with a little give, so a pinch resting on the line doesn't
     // flicker), and cross-fade in 200 ms: only opacity changes, never the shape.
@@ -583,7 +643,7 @@ function makeGpu() {
       upload(gl, gl.ARRAY_BUFFER, ring ? g.b.pickV : g.b.trV, V.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, ring ? g.b.pickI : g.b.trI, I.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, TR_LAYOUT, 9); gl.uniform1f(T.u.u_w, tw * (ring ? 1.9 : 3.4)); gl.uniform1f(T.u.u_tw, tw); gl.uniform1f(T.u.u_off, off); gl.uniform1f(T.u.u_dpr, dpr);
       gl.uniform1f(T.u.u_rad, S.rad * dpr); gl.uniform1f(T.u.u_gap, S.g * dpr); gl.uniform1f(T.u.u_ring, ring ? 1 : 0); gl.uniform1f(T.u.u_a, a);
-      gl.drawElements(gl.TRIANGLES, I.n, gl.UNSIGNED_SHORT, 0); unbind(gl, 6); };
+      gl.drawElements(gl.TRIANGLES, I.n, g.idx, 0); unbind(gl, 6); };
     const ptSetup = () => { gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
       gl.uniform1f(P.u.u_tl, dotW * 1.7); gl.uniform1f(P.u.u_tw, dotW); gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_st, S.st * dpr); };
     // trains first, then the station dots over them, so a train arriving slides in under its station's dot
@@ -655,25 +715,9 @@ function trainSpan(o, half) {
   if (tail < a) { tail = a; nose = Math.min(nose, a + 2 * (d - a)); sd = a; inn = Math.max(inn, 1 - (d - a) / h); }
   return { tail, nose, sd, inn: Math.max(0, Math.min(1, inn)) };
 }
-// Points of route r from distance d0 to d1 (metres), relative to ORIGIN, each with its distance.
-function routeSlice(r, d0, d1) {
-  const out = [], a = posAt(r, d0); out.push([a[0] - ORIGIN[0], a[1] - ORIGIN[1], d0]);
-  for (let i = lowerBound(r.md, d0 + 1e-6); i < r.md.length && r.md[i] < d1; i++) out.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1], r.md[i]]);
-  const b = posAt(r, d1); out.push([b[0] - ORIGIN[0], b[1] - ORIGIN[1], d1]);
-  return out;
-}
-function ribbon(V, I, r, tail, nose, ppm, padM) {
-  const end = r.md[r.md.length - 1], pts = routeSlice(r, Math.max(r.md[0], tail - padM), Math.min(end, nose + padM));
-  const n = pts.length, base = V.n / 9, len = (nose - tail) * ppm; if (n < 2 || base + n * 2 > 65000) return;
-  for (let i = 0; i < n; i++) {
-    const q = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], x = (q[2] - tail) * ppm;
-    V.push(q[0], q[1], a[0], a[1], b[0], b[1], -1, x, len); V.push(q[0], q[1], a[0], a[1], b[0], b[1], 1, x, len);
-  }
-  for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
-}
 function buildDynamic(t) {
   const g = gpu; g.headV.reset(); g.fxV.reset(); g.occV.reset(); g.trV.reset(); g.trI.reset(); g.pickV.reset(); g.pickI.reset();
-  const day = dayKey(); if (D.day !== day) useDay(D, day); // Saturday and Sunday run their own timetables
+  const day = dayKey(realNow()); if (D.day !== day) useDay(D, day); // Saturday and Sunday run their own timetables
   trains = trainsAt(act, t, null);
   const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
   const lit = new Map(); // station dots with a train in them, and how far in
@@ -911,9 +955,17 @@ $('live').onclick = goLive;
 
 function paintClock() {
   const t = curT(); $('time').textContent = hhmm(t);
-  $('spd').textContent = sim ? speed + '×' : 'Live';
+  $('spd').textContent = sim ? speed + '×' : 'Now';
   $('clock').classList.toggle('sim', sim); $('clockw').classList.toggle('sim', sim); $('livew').hidden = !sim;
   $('clock').setAttribute('aria-label', sim ? `Simulated time ${hhmm(t)}, ${speed} times speed. Tap to change speed` : `Time now, ${hhmm(t)}`);
+}
+// The Disclaimer names the timetable and the day it's running, and says if the phone's clock is being corrected.
+// Written only when the text changes (the day turns at 03:00; the clock check lands once).
+function paintDisc() {
+  const p = provenance(D.meta, D.day) + ' ', m = Math.round(Math.abs(clockOff) / 60000);
+  const k = clockOff ? `Your phone's clock is about ${m} min ${clockOff > 0 ? 'slow' : 'fast'}, so the map uses the right time instead. ` : '';
+  if ($('prov').textContent !== p) $('prov').textContent = p;
+  if ($('skew').textContent !== k) $('skew').textContent = k;
 }
 function paintCounts() {
   const tot = trains.length;
@@ -986,7 +1038,7 @@ function frame(now) {
   if (follow && picked && picked.o) cam.center(picked.o.pos[0], picked.o.pos[1]);
   cam.redraw();
   if (labelsDirty) { labelsDirty = false; drawLabels(); }
-  if (now - lastUi > 250) { lastUi = now; paintClock(); paintCounts(); paintCard(); }
+  if (now - lastUi > 250) { lastUi = now; paintClock(); paintCounts(); paintCard(); paintDisc(); }
   requestAnimationFrame(frame);
 }
 addEventListener('resize', () => labelsDirty = true);
@@ -1006,7 +1058,7 @@ Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async 
   let saved = null; try { saved = JSON.parse(localStorage.getItem(LINES_KEY)); } catch (e) {}
   sel = new Set((Array.isArray(saved) ? saved : DEFAULT).filter(l => lines.includes(l)));
   dirs = directions(D); setActive();
-  buildMenu(); paintPicker(); paintDir(); paintClock();
+  buildMenu(); paintPicker(); paintDir(); paintClock(); checkClock();
   gpu = makeGpu(); buildStatic(); selDirty = false;
   try { cam = ml ? mapLibreCamera(ml) : canvasCamera(); await cam.ready; }
   catch (e) { try { if (cam && cam.map) cam.map.remove(); cam = canvasCamera(); } catch (e2) { document.body.insertAdjacentHTML('beforeend', '<div class="err">This map needs WebGL, which this browser has turned off.</div>'); return; } }
