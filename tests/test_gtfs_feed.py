@@ -82,46 +82,64 @@ class Check(unittest.TestCase):
         self.assertEqual((k["summary"]["stops"], k["summary"]["routes"], k["summary"]["trips"]), (262, 36, 5438))
 
 
+class Resp(io.BytesIO):
+    def __init__(self, body, ctype):
+        super().__init__(body); self.headers = {"Content-Type": ctype, "Content-Disposition": "attachment"}
+    def __enter__(self): return self
+    def __exit__(self, *a): self.close()
+
+
+PAGE = b"""<html><body>
+<form method="post" action="/data/broken/"><input type="hidden" name="csrfmiddlewaretoken" value="tok123"></form>
+<form method="POST" action="/data/staticDMRC/download/">
+ <input type="hidden" name="csrfmiddlewaretoken" value="tok123">
+ <select name="usage_type"><option value="">--</option><option value="Commercial">Commercial</option>
+  <option value="Non-Commercial">Non-Commercial</option></select>
+ <select name="purpose"><option value="Business">Business</option><option value="Academia R&amp;D">Academia R&amp;D</option></select>
+ <button type="submit">Submit</button>
+</form></body></html>"""
+
+
+def opener(zipbytes, calls):
+    class Opener:
+        addheaders = []
+        def open(self, req, timeout=None):
+            calls.append(req)
+            if isinstance(req, str):
+                return Resp(PAGE, "text/html")
+            if req.full_url.endswith("/broken/"):
+                raise G.urllib.error.HTTPError(req.full_url, 404, "NOT FOUND", {}, None)
+            return Resp(zipbytes, "application/zip")
+    return lambda *a: Opener()
+
+
 class Download(unittest.TestCase):
-    def test_csrf_form(self):
-        page = b'<form method="post"><input type="hidden" name="csrfmiddlewaretoken" value="tok123"></form>'
-        buf = io.BytesIO()
-        write_zip(buf, FEED)
-        calls = []
-
-        class Resp(io.BytesIO):
-            headers = {"Content-Type": "application/zip", "Content-Disposition": "attachment; filename=DMRC_GTFS.zip"}
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
-
-        class Opener:
-            addheaders = []
-            def open(self, req, timeout=None):
-                calls.append(req)
-                return Resp(page if isinstance(req, str) else buf.getvalue())
-
-        with tempfile.TemporaryDirectory() as d, mock.patch.object(G.urllib.request, "build_opener", lambda *a: Opener()):
+    def test_form_fields_and_fallback(self):
+        buf = io.BytesIO(); write_zip(buf, FEED); calls = []
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(G.urllib.request, "build_opener", opener(buf.getvalue(), calls)):
             p = os.path.join(d, "f.zip")
             h = G.download(p)
             self.assertEqual(G.fingerprint(G.read_feed(p)), G.fingerprint(FEED))
-        self.assertEqual(calls[1].data, b"csrfmiddlewaretoken=tok123")
-        self.assertEqual(calls[1].get_header("Cookie"), "csrftoken=tok123")
+        self.assertEqual(calls[1].full_url, "https://otd.delhi.gov.in/data/broken/")
+        post = calls[2]
+        self.assertEqual(post.full_url, "https://otd.delhi.gov.in/data/staticDMRC/download/")
+        self.assertEqual(dict(G.urllib.parse.parse_qsl(post.data.decode())),
+                         {"csrfmiddlewaretoken": "tok123", "usage_type": "Non-Commercial", "purpose": "Academia R&D"})
+        self.assertEqual(post.get_header("Cookie"), "csrftoken=tok123")
         self.assertIn("Content-Disposition", h)
 
-    def test_html_instead_of_zip(self):
-        class Resp(io.BytesIO):
-            headers = {"Content-Type": "text/html"}
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
-
-        class Opener:
-            addheaders = []
-            def open(self, req, timeout=None):
-                return Resp(b'<input name="csrfmiddlewaretoken" value="x">')
-
-        with tempfile.TemporaryDirectory() as d, mock.patch.object(G.urllib.request, "build_opener", lambda *a: Opener()):
-            with self.assertRaises(SystemExit):
-                G.download(os.path.join(d, "f.zip"))
+    def test_no_zip_saves_page(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(G.urllib.request, "build_opener", opener(b"<html>", calls)):
+            cwd = os.getcwd(); os.chdir(d)
+            try:
+                with self.assertRaises(SystemExit) as e:
+                    G.download(os.path.join(d, "f.zip"))
+                self.assertTrue(os.path.exists("otd-page.html"))
+            finally:
+                os.chdir(cwd)
+        self.assertIn("HTTP 404", str(e.exception.code))
+        self.assertIn("not a zip", str(e.exception.code))
 
 
 if __name__ == "__main__":

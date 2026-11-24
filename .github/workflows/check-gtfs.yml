@@ -104,6 +104,15 @@ jobs:
           } > issue.md
           gh issue create --title "New DMRC GTFS feed on Open Transit Data ($short)" --body-file issue.md
 
+      - name: Keep OTD's page if the download failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: otd-page
+          path: otd-page.html
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Summary
         if: always()
         run: |

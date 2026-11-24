@@ -28,7 +28,9 @@ class Names(unittest.TestCase):
     def test_score(self):
         self.assertEqual(A.score({"rajiv chowk"}, {"rajivchowk"}), 1.0)
         self.assertGreaterEqual(A.score({"kashmere gate"}, {"kashmere gate isbt"}), 0.9)
-        self.assertLess(A.score({"noida sector 18"}, {"noida sector 81"}), 1.0)
+        self.assertEqual(A.score({"noida sector 18"}, {"noida sector 81"}), 0.0)
+        self.assertEqual(A.score(A.aliases("Phase-I (Rapid Metro)"), {"phase 3"}), 0.0)  # seen on the first live run
+        self.assertEqual(A.norm("Mayur Vihar-I"), "mayur vihar 1")
         self.assertLess(A.score({"jhilmil"}, {"dilshad garden"}), A.MIN_SCORE)
 
 
