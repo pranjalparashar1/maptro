@@ -25,6 +25,11 @@ class Names(unittest.TestCase):
         self.assertIn("sihi", A.aliases("Sant Surdas (Sihi)"))
         self.assertNotIn("rapid", A.aliases("Sikanderpur (Rapid Metro)"))
 
+    def test_aliases_for_renamed_stations(self):
+        self.assertIn("ramakrishna ashram marg", A.aliases("RK Ashram Marg"))
+        self.assertIn("shree ram mandir mayur vihar", A.aliases("Mayur Vihar Pocket 1"))
+        self.assertGreaterEqual(A.score(A.aliases("IIT"), {"iit delhi"}), A.MIN_SCORE)
+
     def test_score(self):
         self.assertEqual(A.score({"rajiv chowk"}, {"rajivchowk"}), 1.0)
         self.assertGreaterEqual(A.score({"kashmere gate"}, {"kashmere gate isbt"}), 0.9)

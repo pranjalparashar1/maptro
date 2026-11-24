@@ -17,7 +17,11 @@ SHAPES = {"airport": "shp_osm_AEx", "magenta_kpe": "shp_osm_8", "magenta_north":
 STOPS = {  # our key -> MetroMapper stop_id
     "yashobhoomi": "121_orange_ext", "krishna_park_ext": "108_magenta_ext",
     "bhalaswa": "529", "haiderpur_village": "531", "uttari_pitampura": "532", "madhuban_chowk": "533", "deepali_chowk": "534",
-    "burari": "528", "jharoda_majra": "527", "jagatpur_wazirabad": "526", "soorghat": "524", "nanaksar_sonia_vihar": "525",
+    "burari": "528", "jharoda_majra": "527", "jagatpur_wazirabad": "526",
+    # MetroMapper names 524 Soorghat and 525 Nanaksar-Sonia Vihar, the wrong way round: OSM (node/13628489714, 24 Nov
+    # 2026) has Nanaksar - Sonia Vihar at 524's point, east of the Yamuna.
+    # Soorghat, on the west bank, is not served (Google Maps: 7 stops Majlis Park to Yamuna Vihar, 23 Nov 2026).
+    "nanaksar_sonia_vihar": "524", "soorghat": "525",
     "khajuri_khas": "523", "bhajanpura": "522", "yamuna_vihar": "521",
 }
 pts = {}

@@ -36,6 +36,15 @@ out center tags;"""
 NAME_KEYS = ("name:en", "name", "official_name", "alt_name", "old_name", "short_name", "int_name")
 MIN_SCORE = 0.8
 GENERIC = {"east", "west", "north", "south", "rapid", "m i a"}
+# Our name (normalised) -> the name OSM uses, for stations it names differently. Checked by hand, 24 Nov 2026.
+ALIASES = {
+    "barakhamba": "barakhambha road",
+    "rk ashram marg": "ramakrishna ashram marg",
+    "badarpur border": "badarpur",
+    "iit": "iit delhi",
+    "mayur vihar pocket 1": "shree ram mandir mayur vihar",  # renamed; OSM uses the new name
+    "udyog bhawan": "seva teerth",  # renamed 14 Feb 2026 (Wikipedia)
+}
 
 
 def hv(lat1, lon1, lat2, lon2):
@@ -63,6 +72,7 @@ def aliases(name):
         out.add(norm(re.sub(r"\([^)]*\)", " ", name)))
         # '(Sihi)' or '(New Bus Adda)' are other names for the station; '(East)' or '(Rapid Metro)' are not
         out.update(n for n in map(norm, inner) if n not in GENERIC)
+    out |= {ALIASES[a] for a in out if a in ALIASES}
     return {a for a in out if a}
 
 

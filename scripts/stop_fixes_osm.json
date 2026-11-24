@@ -1,0 +1,377 @@
+{
+ "_about": "Station points corrected to OpenStreetMap. From scripts/audit_osm.py, GitHub Actions run 45359465106 (Overpass, OSM data as of 2026-11-24T08:49Z): every stop more than 150 m from its OSM station, plus three found once audit_osm.py knew OSM's names for them. Each was checked by hand: the OSM name is the same station, and where English Wikipedia's station article has coordinates (read 24 Nov 2026) they are given as wikipedia_m, the distance from the new point. build.py moves the stop here and bends the feed's track to pass through it (see shift_shape). Data (c) OpenStreetMap contributors, ODbL.",
+ "stops": {
+  "220": {
+   "name": "Raja Nahar Singh",
+   "lat": 28.340002,
+   "lon": 77.316451,
+   "osm": "node/9565595809",
+   "moved_m": 1489,
+   "wikipedia_m": 22
+  },
+  "146": {
+   "name": "Bata Chowk",
+   "lat": 28.385951,
+   "lon": 77.313437,
+   "osm": "way/1038912570",
+   "moved_m": 1435,
+   "note": "Wikipedia gives only 28.39, 77.31 (minutes precision), which agrees."
+  },
+  "140": {
+   "name": "NHPC Chowk",
+   "lat": 28.457694,
+   "lon": 77.307404,
+   "osm": "way/1041873112",
+   "moved_m": 567,
+   "wikipedia_m": 4
+  },
+  "145": {
+   "name": "Neelam Chowk Ajronda",
+   "lat": 28.397664,
+   "lon": 77.312359,
+   "osm": "way/1038912569",
+   "moved_m": 464,
+   "wikipedia_m": 16
+  },
+  "37": {
+   "name": "Rohini Sector 18-19",
+   "lat": 28.73838,
+   "lon": 77.139853,
+   "osm": "node/2837147020",
+   "moved_m": 464,
+   "wikipedia_m": 7
+  },
+  "211": {
+   "name": "Karkarduma Court",
+   "lat": 28.6536,
+   "lon": 77.295788,
+   "osm": "node/4676900919",
+   "moved_m": 461,
+   "wikipedia_m": 9
+  },
+  "123": {
+   "name": "Janpath",
+   "lat": 28.624049,
+   "lon": 77.219259,
+   "osm": "node/9584236507",
+   "moved_m": 420,
+   "wikipedia_m": 113
+  },
+  "222": {
+   "name": "Ashram",
+   "lat": 28.572423,
+   "lon": 77.258598,
+   "osm": "node/6196100481",
+   "moved_m": 418,
+   "wikipedia_m": 27
+  },
+  "142": {
+   "name": "Sector-28",
+   "lat": 28.438213,
+   "lon": 77.30906,
+   "osm": "way/1038927458",
+   "moved_m": 400
+  },
+  "223": {
+   "name": "Sarai Kale Khan - Nizamuddin",
+   "lat": 28.588749,
+   "lon": 77.257249,
+   "osm": "node/6196100480",
+   "moved_m": 397,
+   "wikipedia_m": 68
+  },
+  "127": {
+   "name": "Lajpat Nagar",
+   "lat": 28.570597,
+   "lon": 77.236401,
+   "osm": "node/6453992654",
+   "moved_m": 321,
+   "wikipedia_m": 7
+  },
+  "241": {
+   "name": "Dhansa Bus Stand",
+   "lat": 28.611909,
+   "lon": 76.978526,
+   "osm": "node/2579042823",
+   "moved_m": 302,
+   "wikipedia_m": 4
+  },
+  "236": {
+   "name": "Noida Sec-59",
+   "lat": 28.606528,
+   "lon": 77.372683,
+   "osm": "node/6539894864",
+   "moved_m": 286,
+   "wikipedia_m": 6
+  },
+  "61": {
+   "name": "Saket",
+   "lat": 28.521168,
+   "lon": 77.202224,
+   "osm": "node/6179179025",
+   "moved_m": 284,
+   "wikipedia_m": 101
+  },
+  "39": {
+   "name": "Jahangirpuri",
+   "lat": 28.725972,
+   "lon": 77.162658,
+   "osm": "node/6547772110",
+   "moved_m": 282,
+   "wikipedia_m": 24
+  },
+  "53": {
+   "name": "Udyog Bhawan",
+   "lat": 28.609514,
+   "lon": 77.211796,
+   "osm": "node/7018886727",
+   "moved_m": 282,
+   "wikipedia_m": 173,
+   "note": "OSM names it Seva Teerth (renamed 14 Feb 2026 per Wikipedia). Wikipedia's point is 170 m north of OSM's; OSM's is used."
+  },
+  "125": {
+   "name": "Jawahar Lal Nehru Stadium",
+   "lat": 28.588235,
+   "lon": 77.233783,
+   "osm": "node/9584236506",
+   "moved_m": 259
+  },
+  "4": {
+   "name": "Shahdara",
+   "lat": 28.67343,
+   "lon": 77.289886,
+   "osm": "node/663758998",
+   "moved_m": 255
+  },
+  "197": {
+   "name": "Ghevra Metro station",
+   "lat": 28.685238,
+   "lon": 76.996159,
+   "osm": "node/6465991449",
+   "moved_m": 252
+  },
+  "47": {
+   "name": "Chandni Chowk",
+   "lat": 28.658423,
+   "lon": 77.230338,
+   "osm": "node/7018886724",
+   "moved_m": 246
+  },
+  "105": {
+   "name": "Subash Nagar",
+   "lat": 28.640459,
+   "lon": 77.105182,
+   "osm": "node/6548798520",
+   "moved_m": 239
+  },
+  "121": {
+   "name": "Dwarka Sector - 21",
+   "lat": 28.551922,
+   "lon": 77.05856,
+   "osm": "node/6539894862",
+   "moved_m": 235
+  },
+  "129": {
+   "name": "Kailash Colony",
+   "lat": 28.55533,
+   "lon": 77.241964,
+   "osm": "node/7267374895",
+   "moved_m": 231,
+   "wikipedia_m": 6
+  },
+  "44": {
+   "name": "Vishwavidyalaya",
+   "lat": 28.695077,
+   "lon": 77.214746,
+   "osm": "node/7018316588",
+   "moved_m": 229
+  },
+  "22": {
+   "name": "Mundka",
+   "lat": 28.682434,
+   "lon": 77.030574,
+   "osm": "node/6465991447",
+   "moved_m": 224
+  },
+  "134": {
+   "name": "Jasola-Apollo",
+   "lat": 28.538176,
+   "lon": 77.283267,
+   "osm": "way/840200539",
+   "moved_m": 222,
+   "wikipedia_m": 5
+  },
+  "99": {
+   "name": "Shadipur",
+   "lat": 28.651583,
+   "lon": 77.158259,
+   "osm": "node/347676595",
+   "moved_m": 219,
+   "wikipedia_m": 8
+  },
+  "98": {
+   "name": "Patel Nagar",
+   "lat": 28.645013,
+   "lon": 77.169282,
+   "osm": "node/268217229",
+   "moved_m": 218,
+   "wikipedia_m": 2
+  },
+  "14": {
+   "name": "Kanhaiya Nagar",
+   "lat": 28.682408,
+   "lon": 77.164775,
+   "osm": "node/663761505",
+   "moved_m": 217,
+   "wikipedia_m": 3
+  },
+  "32": {
+   "name": "Shivaji Park",
+   "lat": 28.675032,
+   "lon": 77.130472,
+   "osm": "node/6465991437",
+   "moved_m": 216
+  },
+  "154": {
+   "name": "IGI Airport",
+   "lat": 28.556463,
+   "lon": 77.086699,
+   "osm": "node/927873494",
+   "moved_m": 214,
+   "wikipedia_m": 71
+  },
+  "27": {
+   "name": "Udyog Nagar",
+   "lat": 28.681103,
+   "lon": 77.080849,
+   "osm": "node/6465991442",
+   "moved_m": 213
+  },
+  "109": {
+   "name": "Uttam Nagar East",
+   "lat": 28.624847,
+   "lon": 77.065286,
+   "osm": "node/6541854250",
+   "moved_m": 212
+  },
+  "100": {
+   "name": "Kirti Nagar",
+   "lat": 28.655746,
+   "lon": 77.150663,
+   "osm": "node/347676531",
+   "moved_m": 211,
+   "wikipedia_m": 109
+  },
+  "120": {
+   "name": "Dwarka Sector - 8",
+   "lat": 28.565611,
+   "lon": 77.067037,
+   "osm": "node/6539894861",
+   "moved_m": 209,
+   "wikipedia_m": 1
+  },
+  "21": {
+   "name": "Rithala",
+   "lat": 28.720806,
+   "lon": 77.107181,
+   "osm": "node/268381455",
+   "moved_m": 209,
+   "wikipedia_m": 21
+  },
+  "157": {
+   "name": "Shivaji Stadium",
+   "lat": 28.628896,
+   "lon": 77.211322,
+   "osm": "node/554257833",
+   "moved_m": 207
+  },
+  "58": {
+   "name": "Green Park",
+   "lat": 28.558007,
+   "lon": 77.206793,
+   "osm": "node/7018316585",
+   "moved_m": 205
+  },
+  "73": {
+   "name": "Kaushambi",
+   "lat": 28.645286,
+   "lon": 77.324343,
+   "osm": "node/10314380323",
+   "moved_m": 203
+  },
+  "31": {
+   "name": "Madipur",
+   "lat": 28.676475,
+   "lon": 77.11936,
+   "osm": "node/6465991438",
+   "moved_m": 202
+  },
+  "11": {
+   "name": "Pratap Nagar",
+   "lat": 28.666718,
+   "lon": 77.198897,
+   "osm": "node/268381457",
+   "moved_m": 198
+  },
+  "72": {
+   "name": "Vaishali",
+   "lat": 28.64967,
+   "lon": 77.339575,
+   "osm": "node/10314380322",
+   "moved_m": 197
+  },
+  "54": {
+   "name": "Lok Kalyan Marg",
+   "lat": 28.597351,
+   "lon": 77.211097,
+   "osm": "node/7018886728",
+   "moved_m": 194
+  },
+  "101": {
+   "name": "Moti Nagar",
+   "lat": 28.657859,
+   "lon": 77.142429,
+   "osm": "node/347676947",
+   "moved_m": 189,
+   "wikipedia_m": 32
+  },
+  "51": {
+   "name": "Patel Chowk",
+   "lat": 28.622966,
+   "lon": 77.214031,
+   "osm": "node/7018886726",
+   "moved_m": 170
+  },
+  "45": {
+   "name": "Vidhan Sabha",
+   "lat": 28.686322,
+   "lon": 77.221727,
+   "osm": "node/7018316587",
+   "moved_m": 169
+  },
+  "224": {
+   "name": "Mayur Vihar Pocket 1",
+   "lat": 28.605862,
+   "lon": 77.298702,
+   "osm": "node/6196100479",
+   "moved_m": 246,
+   "note": "OSM uses the new name, Shree Ram Mandir Mayur Vihar. Found on the re-run with name aliases (Actions run 45363051918)."
+  },
+  "94": {
+   "name": "RK Ashram Marg",
+   "lat": 28.639244,
+   "lon": 77.208579,
+   "osm": "node/6539894850",
+   "moved_m": 223,
+   "note": "OSM: Ramakrishna Ashram Marg. Found on the re-run with name aliases (Actions run 45363051918)."
+  },
+  "138": {
+   "name": "Badarpur Border",
+   "lat": 28.493258,
+   "lon": 77.30303,
+   "osm": "way/581226084",
+   "moved_m": 213,
+   "note": "OSM: Badarpur. Found on the re-run with name aliases (Actions run 45363051918)."
+  }
+ }
+}
