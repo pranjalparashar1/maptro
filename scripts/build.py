@@ -10,6 +10,9 @@ Fixes applied (each is printed when the build runs):
      station, and the feed's shapes were routed through those wrong points, so
      trains drove out to them and back. STOP_FIXES below has the corrected
      coordinates and their sources. Shape vertices at a wrong point move with it.
+     stop_fixes_osm.json moves the stops OpenStreetMap puts more than 150 m away
+     (scripts/audit_osm.py, checked against Wikipedia), and shift_shape() bends
+     the feed's track so it still runs through each moved station.
   3. Shape spurs: out-and-back hairpins left in the shapes (mostly caused by 2)
      are removed, and shape distances and stop positions are recomputed for
      any route that changed.
@@ -50,6 +53,10 @@ STOP_FIXES = {
     196: (28.6834099, 77.0173627, W.format("Mundka_Industrial_Area")),  # feed had it west of Ghevra
     205: (28.5758068, 77.1985707, W.format("Sarojini_Nagar")),
 }
+# Stops more than 150 m from their OpenStreetMap station (scripts/audit_osm.py), each checked by hand; see the file.
+OSM_FIXES = {int(k): (v["lat"], v["lon"], f"OpenStreetMap {v['osm']}")
+             for k, v in json.load(open(os.path.join(HERE, "stop_fixes_osm.json")))["stops"].items()}
+SNAP_M = 40  # a moved station further than this from the track pulls the track to it
 # Top operating speed in km/h. DMRC metro lines run at up to 80 km/h; the Airport Line at 120 km/h
 # since 17 Sep 2023 (DMRC, reported by India TV and india.com that day).
 LINE_VMAX = {"ORANGE/AIRPORT": 120}
@@ -120,6 +127,45 @@ def project(shape, pt, dmin):
         e = hv(q, pt); dd = a[2] + (b[2] - a[2]) * u
         if dd >= dmin - 1 and e < best[0]: best = (e, dd)
     return best[1], best[0]
+
+def at(shape, d):
+    """(lon, lat) at shape distance d."""
+    for a, b in zip(shape, shape[1:]):
+        if b[2] >= d:
+            u = 0 if b[2] == a[2] else (d - a[2]) / (b[2] - a[2])
+            return (a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u)
+    return shape[-1][:2]
+
+def shift_shape(pts, pat, moved):
+    """Bend a shape so it passes through moved stations. pts: [(lon, lat)]; moved: {stop_id: (lon, lat)}.
+    At each stop of pat the track is offset by (station - track point) if the station is moved and more than
+    SNAP_M from the track (the track point is where it met the station's old point, else the nearest), else by nothing, and between stops the offset is interpolated by distance.
+    So unmoved stations keep their track and the line between them stays smooth. Returns (pts, stops pulled)."""
+    full = with_dist(pts); anchors = []; dmin = 0; pulled = []
+    for p in pat:
+        if p[0] not in moved:
+            dd, _ = project(full, coords[p[0]], dmin); anchors.append((dd, 0.0, 0.0)); dmin = dd; continue
+        dd, err = project(full, moved[p[0]], dmin)
+        if err > SNAP_M:
+            # Where the track meets the station's old point (the feed routed it there), else where it passes nearest
+            do, eo = project(full, pre_osm[p[0]], dmin)
+            if eo <= SNAP_M: dd = do
+            q = at(full, dd); anchors.append((dd, moved[p[0]][0] - q[0], moved[p[0]][1] - q[1])); pulled.append(p[0])
+        else:
+            anchors.append((dd, 0.0, 0.0))
+        dmin = dd
+    if not pulled:
+        return pts, pulled
+    out = []
+    for x, y, d in full:
+        if d <= anchors[0][0]: ox, oy = anchors[0][1:]
+        elif d >= anchors[-1][0]: ox, oy = anchors[-1][1:]
+        else:
+            i = next(i for i in range(1, len(anchors)) if anchors[i][0] >= d); a, b = anchors[i - 1], anchors[i]
+            u = 0 if b[0] == a[0] else (d - a[0]) / (b[0] - a[0])
+            ox, oy = a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u
+        out.append((x + ox, y + oy))
+    return out, pulled
 
 def tmin(dist, vmax_kmh):
     """Shortest run over dist metres: accelerate at ACCEL, cruise at vmax (if there is room), brake at DECEL."""
@@ -264,6 +310,11 @@ orig = dict(coords)
 for sid, (lat, lon, src) in STOP_FIXES.items():
     old = coords[sid]; coords[sid] = (lon, lat)
     note(f"stop {names[sid]} moved {hv(old, (lon, lat)) / 1000:.1f} km to {lat}, {lon} ({src})")
+osm_moved = {sid: (lon, lat) for sid, (lat, lon, src) in OSM_FIXES.items()}
+note(f"{len(OSM_FIXES)} stops moved to their OpenStreetMap position, "
+     f"{min(hv(coords[k], v) for k, v in osm_moved.items()):.0f} to {max(hv(coords[k], v) for k, v in osm_moved.items()):.0f} m "
+     f"(stop_fixes_osm.json)")
+pre_osm = dict(coords); coords.update(osm_moved)
 
 routes = []
 for _, ro in r.iterrows():
@@ -282,6 +333,9 @@ for _, ro in r.iterrows():
         for i, q in enumerate(raw):
             if hv(q, orig[sid]) < 30: raw[i] = coords[sid]; moved = True
         moved = True
+    if {p[0] for p in pat} & osm_moved.keys():
+        raw, pulled = shift_shape(raw, pat, osm_moved); moved = True
+        if pulled: note(f"{rid}: track bent to reach {', '.join(names[k] for k in pulled)}")
     cleaned, removed = clean_shape(raw)
     if removed or moved:
         full = with_dist(cleaned)
