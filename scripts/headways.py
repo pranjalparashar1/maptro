@@ -12,7 +12,8 @@ How the times are made:
    section it covers (e.g. Blue: 2:51 trunk, 5:42 each branch, 4:16 to Dwarka Sector 21); build.py prints a check.
  - Where DMRC's numbers imply trains that turn back short of the end (Blue at Dwarka, Green at Mundka, Yellow at
    Vishwavidyalaya, the Pink spur), the service is a trimmed copy of a feed route, with the feed's run times.
- - Service hours (first and last train) and the peak bands are the 2023 feed's: DMRC's table gives neither.
+ - Service hours (first and last train) and the peak bands are the 2023 feed's: DMRC's table gives neither. Later
+   Sunday starts and DMRC's announced special days (service_days.json) are applied by index.html, not here.
  - Routes the table doesn't cover (Rapid Metro, Aqua) keep the feed's weekday times every day.
 """
 import json, os
@@ -200,3 +201,34 @@ def gap(by, rids, stop, day, a, b):
         ts += [s + off for s in st if a <= s + off < b]
     ts.sort()
     return (ts[-1] - ts[0]) / (len(ts) - 1) if len(ts) > 1 else None
+
+
+def hm(s):
+    h, m = s.split(":"); return int(h) * 3600 + int(m) * 60
+
+
+def service_meta(cfg, routes, log=print):
+    """service_days.json, checked and in seconds, for data.json's meta.service. index.html cuts each day's departures
+    from a route's first stop to these times (a Sunday's first trains, and DMRC's announced special days)."""
+    lines = {r["line"] for r in routes}
+    def first(v, where):
+        if isinstance(v, str): return hm(v)
+        bad = set(v) - lines
+        if bad: raise ValueError(f"{where}: unknown line(s) {sorted(bad)}")
+        return {k: hm(x) for k, x in v.items()}
+    sun = first(cfg["sunday_first"]["lines"], "sunday_first")
+    for line, t in sorted(sun.items()):
+        rs = [r for r in routes if r["line"] == line]
+        cut = sum(1 for r in rs for s in r.get("sun", r["starts"]) if s < t)
+        log(f"sunday first train {line}: {t // 3600:02d}:{t % 3600 // 60:02d}, {cut} early Sunday departure(s) not run")
+    days = {}
+    for date, d in sorted(cfg["special_days"].items()):
+        if date.startswith("_"): continue
+        y, m, dd = map(int, date.split("-"))  # YYYY-MM-DD
+        if d["timetable"] not in DAYS: raise ValueError(f"{date}: timetable must be one of {DAYS}")
+        out = {"name": d["name"], "tt": d["timetable"]}
+        if "first" in d: out["first"] = first(d["first"], date)
+        if "last" in d: out["last"] = hm(d["last"])
+        days[f"{y:04d}-{m:02d}-{dd:02d}"] = out
+        log(f"special day {date} {d['name']}: {d['timetable']} timetable" + (f", first {d['first']}" if "first" in d else "") + (f", last {d['last']}" if "last" in d else ""))
+    return {"sun_first": sun, "days": days}

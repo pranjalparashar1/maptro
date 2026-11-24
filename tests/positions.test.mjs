@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,runAt,profile,ACCEL,DECEL,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,Buf,polyline,ribbon};')();
+const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,runAt,profile,ACCEL,DECEL,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,serviceOn,plainService,firstDeparture,skipTarget,Buf,polyline,ribbon};')();
 const core = load();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
@@ -298,4 +298,71 @@ test('the clock says Now, and nothing on screen says Live', () => {
   assert.doesNotMatch(body, /\bLive\b/);
   assert.match(html, /id="spd">Now</);
   assert.match(html, /sim \? speed \+ '×' : 'Now'/);
+});
+
+// Times in India (IST) as UTC ms: ist(2026, 11, 29, 6, 30) is 06:30 on Sun 29 Nov 2026 in Delhi.
+const ist = (y, mo, d, h, mi = 0) => Date.UTC(y, mo - 1, d, h, mi) - 19800000;
+const atMs = ms => { core.useDay(D, core.serviceOn(D.meta, ms)); return core.trainsAt(R, core.nowIST(ms), null); };
+const lineSet = ts => new Set(ts.map(o => o.r.line));
+
+test('Sunday trains start later: none on Pink, Magenta or Grey at 06:30, as on a weekday', () => {
+  const sun = lineSet(atMs(ist(2026, 11, 29, 6, 30))), wkd = lineSet(atMs(ist(2026, 11, 30, 6, 30)));
+  for (const l of ['PINK', 'MAGENTA', 'GRAY']) { assert.ok(!sun.has(l), `${l} on Sunday`); assert.ok(wkd.has(l), `${l} on Monday`); }
+  assert.ok(sun.has('YELLOW') && sun.has('BLUE'));
+  core.useDay(D, core.serviceOn(D.meta, ist(2026, 11, 29, 6, 30)));
+  for (const r of R) if (D.meta.service.sun_first[r.line]) assert.ok(r.starts.every(s => s >= D.meta.service.sun_first[r.line]), r.id);
+  core.useDay(D, 'wkd');
+});
+
+test('a train out before midnight on Saturday finishes on Saturday\'s timetable', () => {
+  const sat = ist(2026, 11, 28, 23, 55), sun = ist(2026, 11, 29, 0, 10);
+  assert.equal(core.serviceOn(D.meta, sun).tt, 'sat');
+  const before = atMs(sat).filter(o => o.e + 15 * 60 < o.r.dur), after = atMs(sun);
+  assert.ok(before.length > 0);
+  for (const o of before) assert.ok(after.some(a => a.r === o.r && a.s0 === o.s0), `${o.r.id} ${o.s0} vanished at midnight`);
+  assert.equal(core.serviceOn(D.meta, ist(2026, 11, 29, 3, 1)).tt, 'sun');
+  core.useDay(D, 'wkd');
+});
+
+test('special days: Holi starts at 14:30 on the weekday timetable, Diwali is a Sunday that ends early', () => {
+  const holi = core.serviceOn(D.meta, ist(2026, 3, 4, 10));
+  assert.equal(holi.name, 'Holi'); assert.equal(holi.tt, 'wkd');
+  assert.equal(atMs(ist(2026, 3, 4, 10)).length, 0);
+  assert.ok(atMs(ist(2026, 3, 4, 15)).length > 100);
+  assert.equal(core.serviceOn(D.meta, ist(2026, 3, 5, 1)).name, 'Holi'); // 01:00 next morning is still Holi's service
+  const dw = core.serviceOn(D.meta, ist(2026, 11, 8, 12));
+  assert.equal(dw.tt, 'sun'); assert.equal(dw.last, 22 * 3600);
+  assert.ok(lineSet(atMs(ist(2026, 11, 8, 6, 30))).has('PINK'), 'Pink starts at 06:00 on Diwali');
+  for (const r of R) assert.ok(r.starts.every(s => s <= 22 * 3600), r.id);
+  assert.equal(core.serviceOn(D.meta, ist(2026, 11, 15, 12)).name, null); // the next Sunday is a plain one
+  core.useDay(D, 'wkd');
+});
+
+test('a public holiday listed as a Sunday runs the Sunday timetable on a weekday', () => {
+  const meta = { ...D.meta, service: { ...D.meta.service, days: { '2027-01-26': { name: 'Republic Day', tt: 'sun' } } } };
+  const sv = core.serviceOn(meta, ist(2027, 1, 26, 9));
+  assert.equal(sv.tt, 'sun'); assert.equal(sv.first.PINK, 7 * 3600);
+  assert.equal(core.serviceOn(meta, ist(2027, 1, 27, 9)).tt, 'wkd');
+  core.useDay(D, sv); const hol = core.trainsAt(R, H(9.5), null).length;
+  core.useDay(D, 'wkd'); assert.ok(hol < core.trainsAt(R, H(9.5), null).length * 0.8);
+});
+
+test('Skip goes to the next 8 am, or to the first train on a day that starts later', () => {
+  const skip = (ms, l) => core.skipTarget(D, ms, l ? new Set(l) : null);
+  assert.equal(skip(ist(2026, 11, 29, 1)), ist(2026, 11, 29, 8));   // Sun 01:00 (Saturday's service): Sunday 08:00
+  assert.equal(skip(ist(2026, 11, 28, 23, 50)), ist(2026, 11, 29, 8));
+  const near = (a, b) => assert.ok(a >= b && a - b < 60000, `${new Date(a).toISOString()} vs ${new Date(b).toISOString()}`);
+  near(skip(ist(2026, 3, 4, 10)), ist(2026, 3, 4, 14, 30)); // Holi morning: the first train, later the same day
+  near(skip(ist(2026, 3, 4, 1)), ist(2026, 3, 4, 14, 30));
+});
+
+test('the Disclaimer names special days and simulated days', () => {
+  assert.match(core.provenance(D.meta, core.serviceOn(D.meta, ist(2026, 3, 4, 15))), /Today runs the weekday timetable, with DMRC's Holi timings/);
+  assert.match(core.provenance(D.meta, 'sun', true), /The simulated day runs the Sunday timetable/);
+});
+
+test('data.json says where every special day comes from, and stays small', () => {
+  const svc = JSON.parse(readFileSync(new URL('../scripts/service_days.json', import.meta.url), 'utf8'));
+  for (const [k, d] of Object.entries(svc.special_days)) if (!k.startsWith('_')) assert.ok(d.source && d.name && d.timetable, k);
+  assert.ok(readFileSync(new URL('../data.json', import.meta.url)).length < 250000);
 });

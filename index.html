@@ -223,21 +223,66 @@ function clockSkew(t0, t1, date) {
 // What the timetable is and which day's runs today, for the Disclaimer, from data.json's meta.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = { wkd: 'weekday', sat: 'Saturday', sun: 'Sunday' };
-function provenance(meta, day) {
+// The service running at time ms: which timetable (tt) and the times that cut it, from data.json's meta.service
+// (scripts/service_days.json). Sundays start later on some lines; on a day DMRC announces its own timings for, such
+// as Holi, that day's entry sets the timetable and its first and last departures. Cuts apply to departures from a
+// route's first stop: `all` (every line) and `first` (per line) are the earliest, `last` the latest. `key` changes
+// whenever the cut does, so the routes are re-cut only then.
+function serviceOn(meta, ms) {
+  const d = new Date(ms + (19800 - 3 * 3600) * 1000), date = d.toISOString().slice(0, 10);
+  const sp = ((meta && meta.service && meta.service.days) || {})[date];
+  if (!sp) return plainService(meta, dayKey(ms), date);
+  const base = plainService(meta, sp.tt, date), f = sp.first;
+  return { ...base, key: date, name: sp.name, all: typeof f === 'number' ? f : 0,
+    first: f && typeof f === 'object' ? { ...base.first, ...f } : base.first, last: sp.last == null ? Infinity : sp.last };
+}
+function plainService(meta, tt, date = null) {
+  const first = tt === 'sun' ? { ...((meta && meta.service && meta.service.sun_first) || {}) } : {};
+  return { key: tt, tt, date, name: null, all: 0, first, last: Infinity };
+}
+function provenance(meta, svc, sim = false) {
+  if (typeof svc === 'string') svc = plainService(meta, svc);
   const ymd = s => (s || '').split('-').map(Number), fq = meta.frequency || {};
   const [fy, fm, fd] = ymd(fq.as_of), [gy, gm] = ymd(meta.feed_date);
   const src = fq.as_of ? `DMRC's train frequencies as on ${fd} ${MONTHS[fm - 1]} ${fy}, with journey times from its ${MONTHS[gm - 1]} ${gy} timetable tuned to Google Maps`
     : `DMRC's ${MONTHS[gm - 1]} ${gy} timetable`;
-  return `Timetable: ${src}. Today runs the ${DAY_NAMES[day]} timetable; holidays aren't marked.`;
+  const what = `the ${DAY_NAMES[svc.tt]} timetable${svc.name ? `, with DMRC's ${svc.name} timings` : ''}`;
+  return `Timetable: ${src}. ${sim ? 'The simulated day runs' : 'Today runs'} ${what}. Days with special timings, like Holi, are added by hand when DMRC announces them.`;
 }
-// Points every route's starts at that day's departures (data.json routes may carry sat and sun beside starts).
-function useDay(D, day) { for (const r of D.routes) r.starts = r.byDay[day]; D.day = day; return D; }
+// Points every route's starts at a service's departures (data.json routes may carry sat and sun beside starts):
+// a timetable name ('wkd', 'sat', 'sun') or a serviceOn() result.
+function useDay(D, svc) {
+  if (typeof svc === 'string') svc = plainService(D.meta, svc);
+  for (const r of D.routes) {
+    const lo = Math.max(svc.all, svc.first[r.line] || 0), all = r.byDay[svc.tt];
+    r.starts = lo > 0 || svc.last < Infinity ? all.filter(s => s >= lo && s <= svc.last) : all;
+  }
+  D.day = svc.tt; D.svc = svc; return D;
+}
+// Where "Skip" goes from moment ms: 08:00 next (later today if trains haven't started yet), or the first train
+// after it on the chosen lines when that day starts later (Holi's 14:30).
+function skipTarget(D, ms, lines) {
+  const t = nowIST(ms), today = serviceOn(D.meta, ms), f = firstDeparture(D, today, lines);
+  let to = ms + ((8 * 3600 - t + DAY) % DAY) * 1000; // the next 08:00
+  if (t >= 3 * 3600 && f !== null && f > t) to = ms + (Math.max(f, 8 * 3600) - t) * 1000; // today's trains are still to come
+  else { const f2 = firstDeparture(D, serviceOn(D.meta, to), lines); if (f2 !== null && f2 > 8 * 3600) to += (f2 - 8 * 3600) * 1000; }
+  return to;
+}
+// Earliest departure in a service on the given lines (null for all), in seconds after its midnight; null if none.
+function firstDeparture(D, svc, lines) {
+  let best = null;
+  for (const r of D.routes) {
+    if (lines && !lines.has(r.line)) continue;
+    const lo = Math.max(svc.all, svc.first[r.line] || 0);
+    for (const s of r.byDay[svc.tt]) if (s >= lo && s <= svc.last) { if (best === null || s < best) best = s; break; }
+  }
+  return best;
+}
 // Adds sorted starts for each day, duration and Mercator copies of each shape to the routes in data.json.
-function prepare(D, day = 'wkd') {
+function prepare(D, svc = 'wkd') {
   const sort = a => [...a].sort((x, y) => x - y);
   for (const r of D.routes) {
     r.byDay = { wkd: sort(r.starts), sat: sort(r.sat || r.starts), sun: sort(r.sun || r.starts) };
-    r.starts = r.byDay[day];
     r.dur = r.pat[r.pat.length - 1][1];
     profile(r);
     const n = r.shape.length;
@@ -247,8 +292,7 @@ function prepare(D, day = 'wkd') {
       r.mx[i] = m[0]; r.my[i] = m[1]; r.md[i] = d;
     }
   }
-  D.day = day;
-  return D;
+  return useDay(D, svc);
 }
 // How a train runs between two stops (3): it pulls away at ACCEL, cruises, and brakes at DECEL, leaving and arriving
 // exactly on the timetable's times. The cruise speed is whatever fits the run time, so nothing is retimed: the
@@ -470,7 +514,7 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const CDN = ['https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js','https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'];
 
 let D, R, lines = [], sel = new Set(), color = {}, rgb = {}, tone = {};
-let sim = false, speed = 10, simT = 0, lastReal = performance.now();
+let sim = false, speed = 10, simMs = 0, lastReal = performance.now(); // simMs: the simulated moment, a full date, so the day turns too
 let dirs = {}, dirSel = null, act = [], popPending = true; // dirSel: null for both directions, else 0 (A to B) or 1 (B to A)
 let cam, gpu, trains = [], picked = null, follow = false, labelsDirty = true, selDirty = true, refit = false;
 
@@ -487,10 +531,13 @@ async function checkClock() {
 function curT() {
   const n = performance.now();
   if (!sim) { lastReal = n; return nowIST(realNow()); }
-  simT = (simT + (n - lastReal) / 1000 * speed) % DAY; lastReal = n; return simT;
+  simMs += (n - lastReal) * speed; lastReal = n; return nowIST(simMs);
 }
-// Simulation starts only from "Skip to 8 am"; speeds can change only inside it.
-function startSim(t, s) { curT(); sim = true; simT = t; speed = s; lastReal = performance.now(); paintClock(); }
+// The moment on screen as a full date (ms), real or simulated, as of the last curT().
+const curMs = () => sim ? simMs : realNow();
+// Simulation starts only from "Skip to 8 am"; speeds can change only inside it. ms is a full date, so a simulation
+// that starts on, or runs into, another day picks up that day's timetable.
+function startSim(ms, s) { curT(); sim = true; simMs = ms; speed = s; lastReal = performance.now(); paintClock(); }
 function goLive() { sim = false; lastReal = performance.now(); paintClock(); }
 const hhmm = s => { s = ((Math.floor(s) % DAY) + DAY) % DAY; return String(s / 3600 | 0).padStart(2, '0') + ':' + String((s % 3600) / 60 | 0).padStart(2, '0'); };
 
@@ -746,7 +793,7 @@ function trainSpan(o, half) {
 }
 function buildDynamic(t) {
   const g = gpu; g.headV.reset(); g.fxV.reset(); g.occV.reset(); g.trV.reset(); g.trI.reset(); g.pickV.reset(); g.pickI.reset();
-  const day = dayKey(realNow()); if (D.day !== day) useDay(D, day); // Saturday and Sunday run their own timetables
+  const sv = serviceOn(D.meta, curMs()); if (D.svc.key !== sv.key) { useDay(D, sv); popPending = true; } // weekends and special days run their own
   trains = trainsAt(act, t, null);
   const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z, cam.lat()), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
   // Only trains on screen, or near enough that their nose or glow could reach it, are drawn. Every train is still
@@ -956,7 +1003,8 @@ function showPop() {
   if (!n) { $('pop').classList.add('off'); return; }
   const on = lines.filter(l => sel.has(l));
   $('popd').innerHTML = on.slice(0, 3).map(l => `<i style="background:${color[l]}"></i>`).join('');
-  $('popt').textContent = `${n} train${n === 1 ? '' : 's'} active`;
+  const sv = D.svc, tt = sv.name ? `${sv.name} timings` : sv.tt === 'wkd' ? '' : `${DAY_NAMES[sv.tt]} timetable`;
+  $('popt').textContent = `${n} train${n === 1 ? '' : 's'} active${tt ? ` · ${tt}` : ''}`;
   const el = $('pop');
   if (!el.classList.contains('off')) { el.classList.add('off'); void el.offsetWidth; } // replay the drop-in for a fresh count
   el.classList.remove('off');
@@ -995,12 +1043,19 @@ function paintClock() {
   $('clock').setAttribute('aria-label', sim ? `Simulated time ${hhmm(t)}, ${speed} times speed. Tap to change speed` : `Time now, ${hhmm(t)}`);
 }
 // The Disclaimer names the timetable and the day it's running, and says if the phone's clock is being corrected.
-// Written only when the text changes (the day turns at 03:00; the clock check lands once).
+// Written only when the text changes (the day turns at 03:00, a simulation starts or ends; the clock check lands once).
 function paintDisc() {
-  const p = provenance(D.meta, D.day) + ' ', m = Math.round(Math.abs(clockOff) / 60000);
+  const p = provenance(D.meta, D.svc, sim) + ' ', m = Math.round(Math.abs(clockOff) / 60000);
   const k = clockOff ? `Your phone's clock is about ${m} min ${clockOff > 0 ? 'slow' : 'fast'}, so the map uses the right time instead. ` : '';
   if ($('prov').textContent !== p) $('prov').textContent = p;
   if ($('skew').textContent !== k) $('skew').textContent = k;
+}
+// When the next service runs, for the quiet-hours sheet. A normal day keeps the plain round figures.
+function hoursNote(sv, first) {
+  const at = s => { s = Math.floor(s / 300) * 300; return `${s / 3600 | 0}:${String((s % 3600) / 60 | 0).padStart(2, '0')}`; };
+  if (sv.name) return `${sv.name}: trains run from ${first === null ? 'later' : at(first)}${sv.last < Infinity ? ` to ${at(sv.last)}` : ''}.`;
+  if (sv.tt === 'sun' && first !== null) return `On Sundays, service runs from about ${at(first)} to 23:30.`;
+  return 'Service runs from about 5:30 to 23:30.';
 }
 function paintCounts() {
   const tot = trains.length;
@@ -1012,7 +1067,11 @@ function paintCounts() {
   if (nudge === $('nudge').classList.contains('off')) { $('nudge').classList.toggle('off', !nudge); labelsDirty = true; }
   if (empty !== !$('toast').hidden) {
     $('toast').hidden = !empty;
-    if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><span class="hw"><button class="btn act press" id="ff">Skip to 8 am</button></span>`, haptic($('ff')), $('ff').onclick = () => { startSim(8 * 3600, 10); popPending = true; };
+    if (empty) {
+      const to = skipTarget(D, curMs(), sel), t = nowIST(to), sv = serviceOn(D.meta, to);
+      $('toast').innerHTML = `<b>The trains are asleep</b><span>${hoursNote(sv, firstDeparture(D, sv, sel))}</span><br><span class="hw"><button class="btn act press" id="ff">Skip to ${t === 8 * 3600 ? '8 am' : hhmm(t)}</button></span>`;
+      haptic($('ff')); $('ff').onclick = () => { startSim(skipTarget(D, curMs(), sel), 10); popPending = true; };
+    }
   }
 }
 
@@ -1103,7 +1162,7 @@ function loadScript(src, ms) {
 async function getMapLibre() { for (const u of CDN) { try { await loadScript(u, 6000); if (window.maplibregl) return window.maplibregl; } catch (e) {} } return null; }
 
 Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async ([data, ml]) => {
-  D = prepare(data, dayKey()); R = D.routes;
+  D = prepare(data, serviceOn(data.meta, realNow())); R = D.routes;
   lines = ORDER.filter(l => R.some(r => r.line === l)).concat([...new Set(R.map(r => r.line))].filter(l => !ORDER.includes(l)));
   for (const l of lines) { color[l] = SHOW[l] || D.colors[l] || '#ffffff'; rgb[l] = hexRgb(color[l]); tone[l] = { track: shade(rgb[l], TONES.track), platform: shade(rgb[l], TONES.platform) }; }
   let saved = null; try { saved = JSON.parse(localStorage.getItem(LINES_KEY)); } catch (e) {}
