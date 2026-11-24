@@ -328,9 +328,8 @@ const NAMES = {RED:'Red',YELLOW:'Yellow',BLUE:'Blue',GREEN:'Green',VIOLET:'Viole
 const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',RAPID:'#5aa0ec',GREEN:'#33b34f'};
 const DEFAULT = ['ORANGE/AIRPORT'];
 const LINES_KEY = 'maptro-lines-v2'; // v2: the default became the Airport Express, so earlier saved picks start fresh
+const INK = [.957, .957, .957]; // --ink: trains are drawn in it, so they stand out from any line
 const SPEEDS = [1, 10, 60]; // simulation only; live time always runs at 1x
-const TRAIL_S = 55;
-const TRACK_DIM = .36; // the track is the line colour at about a third, so the trains carry the light
 // Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
 // true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
 const BLACK_STYLE = { version: 8,
@@ -390,12 +389,10 @@ void main(){
   vec2 o=n*ml*(a_side*hw+u_off);
   gl_Position=vec4((s+o)/(u_res*.5)*c.w,0.,c.w);v_col=a_col;v_s=a_side*hw;
 }`;
-const LINE_FS = `precision highp float;varying vec4 v_col;varying float v_s;uniform float u_w,u_glow;
-void main(){float d=abs(v_s),a;vec3 c=v_col.rgb;
-  if(u_glow>1.5){ // track: a faded band with a faint lane down each side, so it reads as two tracks
-    a=clamp(u_w*.5+.5-d,0.,1.);float q=d-u_w*.27;c*=1.+.55*exp(-q*q/max(u_w*u_w*.004,.6));}
-  else if(u_glow>.5){float x=clamp(d/(u_w*.5+1.),0.,1.);a=(1.-x)*(1.-x)*.28;}else a=clamp(u_w*.5+.5-d,0.,1.);
-  gl_FragColor=vec4(c,1.)*v_col.a*a;}`;
+// Track: solid line colour. Two rails, one per direction, that merge into one line when zoomed out.
+const LINE_FS = `precision highp float;varying vec4 v_col;varying float v_s;uniform float u_w,u_gap;
+void main(){float d=abs(v_s);float a=clamp(u_w*.5+.5-d,0.,1.);if(u_gap>.01)a*=clamp(d-u_gap+.5,0.,1.);
+  gl_FragColor=vec4(v_col.rgb,1.)*v_col.a*a;}`;
 const PT_VS = `precision highp float;
 attribute vec2 a_pos,a_dir;attribute vec4 a_col;attribute float a_size,a_kind;
 uniform mat4 u_m;uniform vec2 u_res;uniform float u_off,u_scale,u_tl,u_pad;
@@ -404,38 +401,31 @@ void main(){
   vec4 c=u_m*vec4(a_pos,0.,1.);vec2 s=c.xy/c.w*u_res*.5;v_dir=vec2(1.,0.);
   if(dot(a_dir,a_dir)>0.){vec4 c2=u_m*vec4(a_pos+a_dir*1e-6,0.,1.);vec2 t=c2.xy/c2.w*u_res*.5-s;
     if(dot(t,t)>1e-12){t=normalize(t);s+=vec2(-t.y,t.x)*u_off;v_dir=t;}}
-  // trains (kind 0) and their selection outline (kind 2) are sized from the train's length; stations from a_size
+  // trains (kind 0) and their selection outline (kind 2) are sized from the train's length; platforms (kind 1) from u_scale
   float px=a_kind>1.5||a_kind<.5?u_tl*a_size+2.*u_pad:a_size*u_scale;
   gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=px;v_px=px;v_sz=a_size;v_col=a_col;v_kind=a_kind;
 }`;
-// A train seen from above: a body with a rounded tail and a bullet nose, pointing the way it travels.
+// A train seen from above: a boxy metro car, three coaches, the front corners cut so it points the way it travels.
+// A station is drawn as its platform: a pill along the track, wide enough to take both rails, a train long.
 const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
-uniform float u_body,u_tl,u_tw,u_coach;
-float ell(vec2 q,vec2 r){float k=length(q/r);vec2 g=q/(r*r)/max(k,1e-4);return (k-1.)/max(length(g),1e-4);}
-float bullet(vec2 q,float L,float W,out float glass){
-  float hl=L*.5,hw=W*.5,nose=min(W*1.45,L*.42),x0=hl-nose,rr=hw*.6;
-  vec2 c=vec2((x0-hl)*.5,0.),b=vec2((x0+hl)*.5,hw),d=abs(q-c)-b+rr;
-  float box=length(max(d,0.))+min(max(d.x,d.y),0.)-rr;
-  glass=max(ell(q-vec2(x0,0.),vec2(nose*.62,hw*.56)),x0-nose*.05-q.x);
-  return min(box,ell(q-vec2(x0,0.),vec2(nose,hw)));}
+uniform float u_tl,u_tw,u_coach,u_bw,u_rim;uniform vec2 u_pl;
+float rbox(vec2 q,vec2 h,float r){vec2 d=abs(q)-h+r;return length(max(d,0.))+min(max(d.x,d.y),0.)-r;}
+float car(vec2 q,float L,float W){float hl=L*.5,hw=W*.5,nose=min(W*.7,L*.22);
+  vec2 n=normalize(vec2(hw*.55,nose));
+  return max(rbox(q,vec2(hl,hw),hw*.35),dot(vec2(q.x,abs(q.y))-vec2(hl,hw*.45),n));}
 void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);
-  if(v_kind<.5||v_kind>1.5){
-    vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
-    float L=u_tl*v_sz,W=u_tw*v_sz,gs;float d=bullet(q,L,W,gs);
-    if(v_kind>1.5){float a=clamp(1.3-abs(d-3.2),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
-    if(u_body<.5){float pad=(v_px-L)*.5;float g=exp(-max(d,0.)/(W*.75))*(1.-smoothstep(pad*.45,pad*.9,d));gl_FragColor=vec4(v_col.rgb*g*.95,0.)*v_col.a;return;}
-    float edge=clamp(.5-d,0.,1.);
-    vec3 fill=mix(v_col.rgb,vec3(1.),.3);
-    // gaps between coaches, once the train is big enough to show them
-    float x0=L*.5-min(W*1.45,L*.42),cl=(x0+L*.5)/3.;float gx=abs(mod(q.x+L*.5+cl*.5,cl)-cl*.5);
-    if(u_coach>.5&&q.x>-L*.5+cl*.5&&q.x<x0)fill*=mix(.35,1.,clamp(gx-.35,0.,1.));
-    vec3 col=mix(vec3(0.),fill,1.-smoothstep(-1.4,-.4,d)); // a dark rim, so the train never melts into its track
-    col=mix(col,vec3(.03),clamp(.5-gs,0.,1.)*.85);       // windscreen
-    col=mix(col,vec3(1.),clamp(.5-(L*.5-1.4-q.x),0.,1.)*clamp(.5-d,0.,1.)*.9); // headlight at the nose
-    gl_FragColor=vec4(col,1.)*edge*v_col.a;return;}
-  float r=length(p);if(r>1.)discard;
-  float ring=smoothstep(.98,.84,r);float inner=smoothstep(.58,.46,r);
-  gl_FragColor=vec4(mix(v_col.rgb,vec3(0.),inner),1.)*ring*v_col.a;
+  vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
+  if(v_kind>.5&&v_kind<1.5){ // platform: black inside, a hairline in the line colour (white at interchanges)
+    vec2 h=u_pl*.5;float d=rbox(q,h,h.y);float a=clamp(.5-d,0.,1.);
+    vec3 col=v_col.rgb*clamp(d+u_bw+.5,0.,1.);
+    gl_FragColor=vec4(col,1.)*a*v_col.a;return;}
+  float L=u_tl*v_sz,W=u_tw*v_sz;float d=car(q,L,W);
+  if(v_kind>1.5){float a=clamp(1.3-abs(d-3.2),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
+  vec3 fill=v_col.rgb;
+  float gx=min(abs(q.x-L/6.),abs(q.x+L/6.)); // gaps between coaches, once the train is big enough to show them
+  if(u_coach>.5)fill*=mix(.15,1.,clamp(gx/u_rim*1.4-.2,0.,1.));
+  vec3 col=fill*clamp(-d-u_rim+.5,0.,1.); // a black rim, so the train never melts into its rail
+  gl_FragColor=vec4(col,1.)*clamp(.5-d,0.,1.)*v_col.a;
 }`;
 
 class Buf { // growable Float32 / Uint16 writer
@@ -457,16 +447,19 @@ function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercat
   for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
 }
 
-// Sizes in CSS pixels by zoom. The track is two trains wide, so trains in each direction run in their own lane.
+// Sizes in CSS pixels by zoom. Each direction has its own rail, so trains never overlap.
 function sizes(z) {
-  const tw = Math.max(2.6, Math.min(10, 2.6 + (z - 10) * 1.45));
-  const track = tw * 2 + 1.5;
-  // stations stay small dots when zoomed out and grow to span the track when zoomed in
-  return { tw, tl: tw * 3.4, track, lane: tw * .5 + .4, st: Math.max(4.5, Math.min(track + 3, 4 + (z - 10) * 3.4)) };
+  const tw = Math.max(3.2, Math.min(10, 2.6 + (z - 10) * 1.45)), tl = tw * 3.4;
+  const split = Math.max(0, Math.min(1, (tw - 3.6) / 1.8)); // rails part as you zoom in
+  // zoomed out, the two lanes close up so the line is thinner than the trains on it, and trains stay easy to spot
+  const lane = (tw * .5 + .4) * (.4 + .6 * split), rail = Math.max(1.3, tw * .3), band = lane * 2 + rail;
+  // a platform takes both rails with a margin; zoomed out it is a round mark, zoomed in it is a train long
+  const pw = band + 4, pl = pw + (tl * 1.15 - pw) * Math.max(0, Math.min(1, (z - 11.6) / 1.6));
+  return { tw, tl, lane, rail, band, rim: Math.max(.6, Math.min(1.25, tw * .14)), gap: (lane - rail / 2) * split, pw, pl, st: Math.max(pw, pl * .55) };
 }
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
-    trV: new Buf(Float32Array), trI: new Buf(Uint16Array), headV: new Buf(Float32Array), fxV: new Buf(Float32Array),
+    headV: new Buf(Float32Array), fxV: new Buf(Float32Array),
     staticDirty: true, gl: null };
   g.init = gl => {
     g.gl = gl;
@@ -479,7 +472,7 @@ function makeGpu() {
       return { p, u, attrs }; };
     g.line = prog(LINE_VS, LINE_FS, ['a_pos', 'a_prev', 'a_next', 'a_side', 'a_col']);
     g.pt = prog(PT_VS, PT_FS, ['a_pos', 'a_dir', 'a_col', 'a_size', 'a_kind']);
-    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'trV', 'trI', 'headV', 'fxV']) g.b[k] = gl.createBuffer();
+    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'headV', 'fxV']) g.b[k] = gl.createBuffer();
     g.isGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
     g.vao = g.isGL2 ? null : gl.getExtension('OES_vertex_array_object');
     g.minmax = g.isGL2 ? gl.MAX : (gl.getExtension('EXT_blend_minmax') || {}).MAX_EXT;
@@ -499,34 +492,25 @@ function makeGpu() {
     if (g.isGL2) gl.bindVertexArray(null); else if (g.vao) g.vao.bindVertexArrayOES(null);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND);
     const res = [gl.drawingBufferWidth, gl.drawingBufferHeight], dpr = view.dpr, z = view.zoom, S = sizes(z);
-    const tw = S.tw * dpr, tl = S.tl * dpr, trackW = S.track * dpr, off = S.lane * dpr;
+    const tw = S.tw * dpr, tl = S.tl * dpr, trackW = S.band * dpr, off = S.lane * dpr;
     if (g.staticDirty) { upload(gl, gl.ARRAY_BUFFER, g.b.lineV, g.lineV.view(), gl.STATIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.lineI, g.lineI.view(), gl.STATIC_DRAW);
       upload(gl, gl.ARRAY_BUFFER, g.b.stV, g.stV.view(), gl.STATIC_DRAW); g.staticDirty = false; }
     gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    // track: one solid faded band per line (pre-dimmed colour, so shared sections don't brighten), two lanes wide
+    // track: the line's own colour, solid, one rail per direction
     const L = g.line; gl.useProgram(L.p); gl.uniformMatrix4fv(L.u.u_m, false, M); gl.uniform2fv(L.u.u_res, res);
     gl.bindBuffer(gl.ARRAY_BUFFER, g.b.lineV); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.b.lineI); bindAttrs(gl, LINE_LAYOUT, 11);
-    if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0); gl.uniform1f(L.u.u_glow, 2);
+    if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0); gl.uniform1f(L.u.u_gap, S.gap * dpr);
       gl.drawElements(gl.TRIANGLES, g.lineI.n, gl.UNSIGNED_SHORT, 0); }
     unbind(gl, 5);
-    // stations sit on the track, under the trains
+    // platforms sit on the track, under the trains
     const P = g.pt; gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
     gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_coach, S.tw >= 5 ? 1 : 0);
+    gl.uniform1f(P.u.u_bw, 1.25 * dpr); gl.uniform1f(P.u.u_rim, S.rim * dpr); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr);
     const pts = (buf, data, scale, o, pad, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
-    gl.uniform1f(P.u.u_body, 0); pts(g.b.stV, g.stV, S.st, 0, 0);
-    unbind(gl, 5);
-    // trails, in the train's lane, added light
-    if (g.trI.n) {
-      gl.useProgram(L.p);
-      upload(gl, gl.ARRAY_BUFFER, g.b.trV, g.trV.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.trI, g.trI.view(), gl.DYNAMIC_DRAW);
-      bindAttrs(gl, LINE_LAYOUT, 11); gl.uniform1f(L.u.u_w, tw * .78); gl.uniform1f(L.u.u_off, off); gl.uniform1f(L.u.u_glow, 0);
-      gl.blendFunc(gl.ONE, gl.ONE); gl.drawElements(gl.TRIANGLES, g.trI.n, gl.UNSIGNED_SHORT, 0); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      unbind(gl, 5); gl.useProgram(P.p);
-    }
-    // trains: an added glow, then the solid body on top, then the selection outline
-    gl.blendFunc(gl.ONE, gl.ONE); pts(g.b.headV, g.headV, 1, off, tw * 2.6); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.uniform1f(P.u.u_body, 1); pts(g.b.headV, g.headV, 1, off, 2 * dpr, true); gl.uniform1f(P.u.u_body, 0);
+    pts(g.b.stV, g.stV, S.pl + 4, 0, 0);
+    // trains, then the selection outline
+    pts(g.b.headV, g.headV, 1, off, 2 * dpr);
     pts(g.b.fxV, g.fxV, 1, off, 6 * dpr);
     unbind(gl, 5);
     gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
@@ -544,21 +528,26 @@ function buildStatic() {
     for (const r of R) {
       if (r.line !== l || (r.id.endsWith('_R') && ids.has(r.id.slice(0, -2)))) continue;
       const pts = []; for (let i = 0; i < r.mx.length; i++) pts.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1]]);
-      polyline(g.lineV, g.lineI, pts, [...rgb[l].map(v => v * TRACK_DIM), 1]);
+      polyline(g.lineV, g.lineI, pts, [...rgb[l], 1]);
     }
   }
-  // stations, one per name, interchanges (on 2+ lines anywhere) in white and larger
-  const byName = new Map();
+  // stations, one per name, for labels and taps; interchanges are on 2+ lines anywhere
+  const byName = new Map(), plat = new Map();
   for (const r of R) r.pat.forEach((p, j) => {
     const name = D.stops[p[0]][0]; let s = byName.get(name);
     if (!s) byName.set(name, s = { name, ids: new Set(), lines: new Set(), on: new Set(), term: false, m: null });
     s.ids.add(p[0]); s.lines.add(r.line);
-    if (sel.has(r.line)) { s.on.add(r.line); if (!s.m) s.m = merc(D.stops[p[0]][1], D.stops[p[0]][2]); if (j === 0 || j === r.pat.length - 1) s.term = true; }
+    if (sel.has(r.line)) { s.on.add(r.line); if (!s.m) s.m = merc(D.stops[p[0]][1], D.stops[p[0]][2]); if (j === 0 || j === r.pat.length - 1) s.term = true;
+      const k = name + '|' + r.line; if (!plat.has(k)) plat.set(k, { s, r, d: p[3] }); }
   });
   stations = [...byName.values()].filter(s => s.on.size);
+  // one platform per station per line, on that line's own track and turned to follow it
+  for (const { s, r, d } of plat.values()) {
+    const [x, y] = posAt(r, d), [tx, ty] = headingAt(r, d), c = s.lines.size > 1 ? [1, 1, 1] : rgb[r.line];
+    g.stV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, 1, 1);
+  }
   for (const s of stations) {
-    const ic = s.lines.size > 1, c = ic ? [1, 1, 1] : rgb[[...s.on][0]];
-    g.stV.push(s.m[0] - ORIGIN[0], s.m[1] - ORIGIN[1], 0, 0, c[0], c[1], c[2], 1, ic ? 1.3 : 1, 1);
+    const ic = s.lines.size > 1;
     s.pri = (s.term ? 2 : 0) + (ic ? 1 : 0);
     s.minZ = s.term ? 9 : ic ? 10.3 : 11.6;
   }
@@ -566,14 +555,11 @@ function buildStatic() {
   g.staticDirty = true; labelsDirty = true;
 }
 function buildDynamic(t) {
-  const g = gpu; g.trV.reset(); g.trI.reset(); g.headV.reset(); g.fxV.reset();
+  const g = gpu; g.headV.reset(); g.fxV.reset();
   trains = trainsAt(act, t, null);
   for (const o of trains) {
-    const c = rgb[o.r.line];
-    const tr = trailPoints(o.r, o.e, TRAIL_S).map(p => [p[0] - ORIGIN[0], p[1] - ORIGIN[1], p[2]]);
-    polyline(g.trV, g.trI, tr, [c[0] * .6 + .4, c[1] * .6 + .4, c[2] * .6 + .4, .75], true);
     const [x, y] = o.pos, [tx, ty] = headingAt(o.r, o.d);
-    const isPick = picked && picked.r === o.r && picked.s0 === o.s0;
+    const isPick = picked && picked.r === o.r && picked.s0 === o.s0, c = INK; // trains are white objects on their line
     g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, isPick ? 1.18 : 1, 0);
     if (isPick) { picked.o = o; const a = RM.matches ? 1 : .55 + .45 * Math.sin(performance.now() / 260);
       g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 1.18, 2); }
@@ -888,7 +874,7 @@ Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async 
   cam.fit(selBounds(), false);
   document.documentElement.dataset.ready = cam.kind;
   // used by the screenshot script to find a train to tap
-  window.__maptro = { trainsOnScreen: () => trains.map(o => cam.project(o.pos[0], o.pos[1])), view: (lon, lat, z) => cam.map && cam.map.jumpTo({ center: [lon, lat], zoom: z }) };
+  window.__maptro = { trainsOnScreen: () => trains.map(o => cam.project(o.pos[0], o.pos[1])), trainLonLat: i => trains[i] && unmerc(trains[i].pos[0], trains[i].pos[1]), view: (lon, lat, z) => cam.map && cam.map.jumpTo({ center: [lon, lat], zoom: z }) };
   requestAnimationFrame(frame);
 }).catch(e => { document.body.insertAdjacentHTML('beforeend', '<div class="err"><span>Couldn\'t load the timetable.</span><button class="btn act press" onclick="location.reload()">Tap to reload</button></div>'); console.error(e); });
 })();

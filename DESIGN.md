@@ -22,7 +22,7 @@ The principles were drawn from how Kiron (pranjal's quiz app) was built: its des
 
 ## 2. Colour tokens
 
-Always dark, and **true black** (`#000`), so an OLED phone switches those pixels off and the line colours glow against nothing. No light mode. `color-scheme: dark`; `theme-color` is `#000000`.
+Always dark, and **true black** (`#000`), so an OLED phone switches those pixels off and the line colours stand out against nothing. No light mode. `color-scheme: dark`; `theme-color` is `#000000`.
 
 ```css
 :root {
@@ -41,7 +41,8 @@ Rules:
 - Resting layers step up from black: page `--bg`, panels `--surface` with a 1px `--line` hairline, buttons and pressed rows `--surface2`.
 - State colours are few and small: the green dot beside "Live", amber when the clock runs fast, a white fill when Follow is on.
 - The primary action ("Skip to 8 am", "Tap to reload", Follow when on) is white with black text.
-- Line colours are DMRC's own, nudged brighter where they read too dark on black (`SHOW` in `index.html`).
+- Line colours are DMRC's own, nudged brighter where they read too dark on black (`SHOW` in `index.html`). They are drawn solid and at full strength, never dimmed, glowing or blended: no gradients, no added light.
+- Trains are drawn in `--ink`, so a train is the same white object on any line, and the line it is on says which line it is.
 
 ### Basemap
 OpenStreetMap data, served as vector tiles by OpenFreeMap (free, no key, made to be linked from other sites), drawn in Maptro's own style (`BLACK_STYLE` in `index.html`):
@@ -100,10 +101,13 @@ Shown under the line picker when exactly one line is chosen. It is a native `<se
 ### Count note
 "19 trains active", with the line's dot: a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
 
-### Trains and track
-- **Track:** one solid band per line, the line colour at 36% (`TRACK_DIM`), two trains wide, with a faint lane down each side so it reads as double track. Solid, so shared sections don't brighten.
-- **Trains:** seen from above: a body in the line colour lifted towards white, coach gaps once it is 5px wide or more, a bullet nose with a dark windscreen and a white headlight, and a thin dark rim so it never melts into its track. An added glow in the line colour sits under it, and a fading trail runs behind in its lane. Trains run in the left lane, as Delhi's do, so the two directions never overlap. The heading is averaged over 90 m of track, so trains turn smoothly through bends.
-- **Sizes** (`sizes()` in `index.html`) grow with zoom: train width 2.6 to 10px, length 3.4× width, track 2× train width plus 1.5px, stations from a 4.5px dot to a ring spanning the track.
+### Trains, track and stations
+Drawn like a transit map seen from above, not a light show. Nothing glows, nothing trails, nothing is blended.
+- **Track:** the line's own colour, solid. Two thin rails, one per direction, with black between them. Zoomed out, the rails close up into one thin line that is narrower than the trains on it, so the trains stay easy to spot.
+- **Trains:** a boxy metro car in `--ink` with a thin black rim, three coaches once it is 5px wide or more, and the front corners cut so it points the way it travels. No windscreen, headlight, glow or trail (the rounded bullet with a dark windscreen read as a fingertip). Trains run on the left rail, as Delhi's do, so the two directions never overlap. The heading is averaged over 90 m of track, so trains turn smoothly through bends. The picked train keeps its pulsing white outline.
+- **Stations** are drawn as their platform: a black pill with a hairline edge, laid along the track and wide enough to take both rails, so a train visibly pulls in and stops inside it. Zoomed out it shrinks to a small round mark; from about zoom 12 it stretches to a train's length. The edge is the line colour, or white at an interchange. Each line gets its own platform where it stops, so an interchange shows where each line's platform really is.
+  - Real station footprints were considered and not used: most of Delhi's stations are underground and have no footprint to draw, the elevated ones are a few pixels across until zoom 15, and outlines from OpenStreetMap vary in quality. A platform mark says the same thing (a train stops here, along this track) at every zoom.
+- **Sizes** (`sizes()` in `index.html`) grow with zoom: train width 3.2 to 10px, length 3.4× width, rails 1.3px or 30% of a train's width, platform the rails' width plus 4px.
 
 ### Line picker
 A dropdown that unfolds from the pill. Header "Lines" with All and None. One row per line: a ring in the line colour that fills with a tick when chosen, and the line's name. Each row is a real `switch` checkbox stretched over the row, so the tap is native and gives the haptic tick. Tapping outside closes it, and the map then fits the chosen lines.
