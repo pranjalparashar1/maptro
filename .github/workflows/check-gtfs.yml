@@ -1,5 +1,5 @@
-# Weekly: has DMRC published a new GTFS feed on Delhi Open Transit Data? And are the stations
-# still where OpenStreetMap puts them?
+# Weekly: are the stations still where OpenStreetMap puts them? By hand only (Actions tab): has DMRC
+# published a new GTFS feed on Delhi Open Transit Data?
 #
 # feed: downloads the feed and compares its contents with scripts/gtfs_feed.json. When it is new,
 #   it runs scripts/audit.py on it, tries scripts/build.py, keeps everything as a run artifact, and
@@ -25,6 +25,9 @@ concurrency:
 
 jobs:
   feed:
+    # Off on the weekly schedule: OTD's DMRC download answers 404 (Nov 2026) and the 2023 feed it serves is
+    # outdated anyway. It still runs when started by hand from the Actions tab.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
