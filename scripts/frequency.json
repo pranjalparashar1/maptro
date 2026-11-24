@@ -1,0 +1,29 @@
+{
+  "_about": "DMRC's average train frequency during peak and off-peak hours, as on 31.08.2026, from delhimetrorail.com/train-frequency (screenshots shared by pranjal, 24 Nov 2026). Each value is [weekday, saturday, sunday] in min:sec. The page gives no peak hours, first or last trains; scripts/headways.py keeps the 2023 feed's for those. Rapid Metro and Aqua (not DMRC) are not on the page.",
+  "source": "DMRC train frequency table, as on 31.08.2026 (delhimetrorail.com/train-frequency)",
+  "peak_bands": [[8, 12], [17, 21]],
+  "peak_bands_source": "the 2023 DMRC feed, whose headways tighten 08:00-12:00 and 17:00-21:00",
+  "sections": {
+    "red_branch":        {"label": "Red: Shaheed Sthal (New Bus Adda) - Dilshad Garden", "peak": ["7:00", "7:40", "10:30"], "off": ["8:20", "9:00", "10:30"]},
+    "red_trunk":         {"label": "Red: Dilshad Garden - Rithala", "peak": ["3:30", "3:50", "5:15"], "off": ["4:10", "4:30", "5:15"]},
+    "yellow_north":      {"label": "Yellow: Samaypur Badli - Vishwavidyalaya", "peak": ["5:48", "6:10", "8:00"], "off": ["7:00", "7:10", "8:00"]},
+    "yellow_trunk":      {"label": "Yellow: Vishwavidyalaya - Millennium City Centre Gurugram", "peak": ["2:54", "3:05", "4:00"], "off": ["3:30", "3:35", "4:00"], "note": "peak of peak 2:18 Kashmere Gate-Sultanpur, 2:30 Sultanpur-Gurugram; not modelled"},
+    "blue_dwarka21":     {"label": "Blue: Dwarka Sector 21 - Dwarka", "peak": ["4:16", "4:53", "6:45"], "off": ["5:15", "5:15", "6:45"]},
+    "blue_trunk":        {"label": "Blue: Dwarka - Yamuna Bank", "peak": ["2:51", "3:15", "4:30"], "off": ["3:30", "3:30", "4:30"]},
+    "blue_noida":        {"label": "Blue: Yamuna Bank - Noida Electronic City", "peak": ["5:42", "6:30", "9:00"], "off": ["7:00", "7:00", "9:00"]},
+    "blue_vaishali":     {"label": "Blue: Yamuna Bank - Vaishali", "peak": ["5:42", "6:30", "9:00"], "off": ["7:00", "7:00", "9:00"]},
+    "green_trunk":       {"label": "Green: Mundka - Ashok Park Main", "peak": ["4:10", "5:00", "5:40"], "off": ["5:10", "5:10", "5:40"]},
+    "green_branch":      {"label": "Green: Kirti Nagar / Inderlok - Ashok Park Main", "peak": ["8:20", "10:00", "11:20"], "off": ["10:20", "10:20", "11:20"]},
+    "green_west":        {"label": "Green: Mundka - Brig. Hoshiyar Singh", "peak": ["6:15", "7:30", "8:30"], "off": ["7:45", "7:45", "8:30"]},
+    "violet_trunk":      {"label": "Violet: Kashmere Gate - Badarpur Border", "peak": ["3:24", "4:00", "5:10"], "off": ["4:40", "5:16", "5:10"]},
+    "violet_south":      {"label": "Violet: Badarpur Border - Raja Nahar Singh (Ballabhgarh)", "peak": ["6:48", "8:00", "10:20"], "off": ["9:20", "10:32", "10:20"]},
+    "pink_plus":         {"label": "Pink: Majlis Park - Majlis Park (+ circular)", "peak": ["5:43", "6:40", "8:00"], "off": ["6:40", "6:40", "8:00"]},
+    "pink_minus":        {"label": "Pink: Majlis Park - Majlis Park (- circular)", "peak": ["5:10", "6:40", "7:55"], "off": ["6:15", "6:40", "7:55"]},
+    "pink_spur":         {"label": "Pink: Maujpur - Shiv Vihar", "peak": ["8:10", "8:10", "8:10"], "off": ["8:10", "8:10", "8:10"]},
+    "magenta_main":      {"label": "Magenta: Botanical Garden - Krishna Park Extension", "peak": ["5:20", "5:48", "6:25"], "off": ["6:05", "6:42", "6:25"]},
+    "magenta_kpe":       {"label": "Magenta: Krishna Park Extension - Janakpuri West", "peak": ["10:40", "11:36", "12:50"], "off": ["12:10", "13:24", "12:50"]},
+    "magenta_north":     {"label": "Magenta: Majlis Park - Deepali Chowk", "peak": ["5:20", "5:20", "5:20"], "off": ["6:20", "6:20", "6:20"]},
+    "grey":              {"label": "Grey: Dwarka - Dhansa Bus Stand", "peak": ["7:30", "7:30", "12:00"], "off": ["12:00", "12:00", "12:00"]},
+    "airport":           {"label": "Airport: Yashobhoomi Dwarka Sector 25 - New Delhi", "peak": ["10:00", "10:00", "10:00"], "off": ["10:00", "10:00", "10:00"]}
+  }
+}
