@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,Buf,polyline,ribbon};')();
+const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,runAt,profile,ACCEL,DECEL,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,Buf,polyline,ribbon};')();
 const core = load();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
@@ -65,11 +65,75 @@ test('distance never goes backwards along a trip, and dwells sit at stops', () =
   }
 });
 
-test('interpolation matches the original linear scan', () => {
-  // the pre-redesign index.html algorithm, kept as the reference
+test('trains are where the timetable says at every stop, and on the same stretch as before in between', () => {
+  // the pre-kinematics algorithm (straight-line in time), kept as the reference for which stop a train is at or after
   const ref = (r, e) => { const p = r.pat; let i = 0; while (i < p.length - 1 && p[i + 1][1] <= e) i++;
-    if (e <= p[i][2]) return p[i][3]; const a = p[i], b = p[i + 1]; return a[3] + (b[3] - a[3]) * ((e - a[2]) / ((b[1] - a[2]) || 1)); };
-  for (const r of R) for (let e = 0; e < r.dur; e += 13) assert.ok(Math.abs(core.stateAt(r, e).d - ref(r, e)) < 1e-6, r.id);
+    return { i, dwell: e <= p[i][2] || i === p.length - 1 }; };
+  for (const r of R) {
+    for (let e = 0; e < r.dur; e += 13) {
+      const s = core.stateAt(r, e), q = ref(r, e);
+      assert.equal(s.i, q.i, r.id); assert.equal(s.dwell, q.dwell, `${r.id} e=${e}`);
+      assert.ok(s.d >= r.pat[s.i][3] - 1e-6 && s.d <= (r.pat[s.i + 1] || r.pat[s.i])[3] + 1e-6, `${r.id} left its stretch at e=${e}`);
+    }
+    for (const q of r.pat) { assert.equal(core.stateAt(r, q[1]).d, q[3]); assert.equal(core.stateAt(r, q[2]).d, q[3]); }
+  }
+});
+
+// Speed (m/s) t seconds into run k, by a central difference.
+const speed = (r, k, t, h = .05) => (core.runAt(r, k, t + h) - core.runAt(r, k, t - h)) / (2 * h);
+const VMAX = Number(html.match(/const VMAX = ([\d.]+)/)[1]);
+const TOP = line => (line === 'ORANGE/AIRPORT' ? 120 : 80) / 3.6; // build.py LINE_VMAX
+
+test('trains pull away and brake: still at each stop, never over the rates or the line\'s top speed', () => {
+  let peak = 0;
+  for (const r of R) for (let k = 0; k < r.pat.length - 1; k++) {
+    const L = r.pat[k + 1][3] - r.pat[k][3], T = r.pat[k + 1][1] - r.pat[k][2];
+    if (!(L > 0)) continue;
+    assert.equal(r.ka[k], core.ACCEL, `${r.id} run ${k} is too short for the rates (${L} m in ${T} s)`);
+    assert.ok(r.kv[k] <= TOP(r.line) + .01, `${r.id} run ${k} peaks at ${(r.kv[k] * 3.6).toFixed(1)} km/h`);
+    peak = Math.max(peak, r.kv[k]);
+    assert.ok(speed(r, k, .05) < .1 && speed(r, k, T - .05) < .1, `${r.id} run ${k} doesn't start and end at rest`);
+    let v0 = 0;
+    for (let t = .5; t < T; t += .5) {
+      const v = speed(r, k, t, .25);
+      assert.ok(v >= -1e-6 && v <= r.kv[k] + 1e-6, `${r.id} run ${k} speed ${v} at ${t}`);
+      assert.ok((v - v0) / .5 <= core.ACCEL + .02 && (v0 - v) / .5 <= core.DECEL + .02, `${r.id} run ${k} jerks at ${t}`);
+      v0 = v;
+    }
+  }
+  assert.ok(peak <= VMAX, `fastest train ${peak.toFixed(1)} m/s, over the frame loop's VMAX ${VMAX}`);
+});
+
+test('a run too short for the rates still arrives on time, without going backwards', () => {
+  const r = { pat: [[0, 0, 20, 0], [1, 40, 60, 1000]] }; core.profile(r); // 1 km in 20 s
+  assert.ok(r.ka[0] > core.ACCEL);
+  let prev = 0;
+  for (let t = 0; t <= 20; t += .25) { const s = core.runAt(r, 0, t); assert.ok(s >= prev - 1e-9); prev = s; }
+  assert.equal(core.runAt(r, 0, 20), 1000); assert.ok(Math.abs(core.runAt(r, 0, 20 - 1e-9) - 1000) < 1e-3);
+});
+
+test('rides still match the Google Maps times they were calibrated to', () => {
+  const cal = JSON.parse(readFileSync(new URL('../scripts/calibration.json', import.meta.url), 'utf8'));
+  for (const c of cal.lines) {
+    if (c.hold) continue;
+    for (const [a, b] of [[c.from, c.to], [c.to, c.from]]) {
+      let best = null;
+      for (const r of R) {
+        if (r.line !== c.line) continue;
+        const ids = r.pat.map(p => p[0]), i = ids.indexOf(a), j = ids.indexOf(b);
+        if (i >= 0 && j > i && (!best || j - i > best.n)) best = { n: j - i, t: r.pat[j][1] - r.pat[i][2] };
+      }
+      assert.ok(best, c.label);
+      assert.ok(Math.abs(best.t - c.minutes * 60) <= 3, `${c.label}: ${(best.t / 60).toFixed(2)} min, Google ${c.minutes}`);
+    }
+  }
+});
+
+test('trains wait longer at interchanges than at other stops', () => {
+  const dw = n => { const out = new Set(); for (const r of R) for (const p of r.pat.slice(1, -1)) if (D.stops[p[0]][0] === n) out.add(p[2] - p[1]); return [...out]; };
+  assert.deepEqual(dw('Rajiv Chowk'), [35]);
+  assert.deepEqual(dw('Kashmere Gate'), [35]);
+  assert.deepEqual(dw('Patel Chowk'), [20]);
 });
 
 test('posAt hits shape endpoints and is continuous', () => {

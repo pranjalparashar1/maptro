@@ -239,6 +239,7 @@ function prepare(D, day = 'wkd') {
     r.byDay = { wkd: sort(r.starts), sat: sort(r.sat || r.starts), sun: sort(r.sun || r.starts) };
     r.starts = r.byDay[day];
     r.dur = r.pat[r.pat.length - 1][1];
+    profile(r);
     const n = r.shape.length;
     r.mx = new Float64Array(n); r.my = new Float64Array(n); r.md = new Float64Array(n);
     for (let i = 0; i < n; i++) {
@@ -249,6 +250,32 @@ function prepare(D, day = 'wkd') {
   D.day = day;
   return D;
 }
+// How a train runs between two stops (3): it pulls away at ACCEL, cruises, and brakes at DECEL, leaving and arriving
+// exactly on the timetable's times. The cruise speed is whatever fits the run time, so nothing is retimed: the
+// timetable's times at every stop, and so every end-to-end ride, stay as they were. Same rates as scripts/build.py,
+// whose tmin keeps every run long enough to manage at these rates under the line's top speed. A run too short for them
+// (none in data.json) would take a triangle with both rates scaled up, so it still arrives on time.
+const ACCEL = .85, DECEL = .9; // m/s^2
+// Per run k of route r: cruise speed r.kv[k] (m/s) and the rates actually used, r.ka[k] and r.kd[k].
+function profile(r) {
+  const p = r.pat, n = p.length - 1, K = 1 / ACCEL + 1 / DECEL;
+  r.kv = new Float64Array(n); r.ka = new Float64Array(n); r.kd = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const L = p[k + 1][3] - p[k][3], T = p[k + 1][1] - p[k][2], q = T * T - 2 * K * L;
+    if (!(L > 0 && T > 0)) { r.kv[k] = 0; r.ka[k] = ACCEL; r.kd[k] = DECEL; continue; }
+    const s = q >= 0 ? 1 : 2 * K * L / (T * T); // > 1 only when the run is too short for the rates
+    r.kv[k] = q >= 0 ? (T - Math.sqrt(q)) / K : 2 * L / T; r.ka[k] = ACCEL * s; r.kd[k] = DECEL * s;
+  }
+}
+// Metres covered t seconds into run k of route r (0 at departure, the run's length on arrival).
+function runAt(r, k, t) {
+  const p = r.pat, L = p[k + 1][3] - p[k][3], T = p[k + 1][1] - p[k][2], v = r.kv[k], a = r.ka[k], b = r.kd[k];
+  if (!(L > 0) || t <= 0) return 0;
+  if (t >= T) return L;
+  const ta = v / a, tb = v / b;
+  const s = t < ta ? a * t * t / 2 : t > T - tb ? L - b * (T - t) * (T - t) / 2 : v * ta / 2 + v * (t - ta);
+  return Math.max(0, Math.min(L, s));
+}
 // Where a train is `e` seconds after leaving its first stop: shape distance, pattern index, dwelling or not.
 function stateAt(r, e) {
   const p = r.pat, last = p.length - 1;
@@ -258,8 +285,7 @@ function stateAt(r, e) {
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (p[m][1] <= e) lo = m; else hi = m; }
   const a = p[lo];
   if (e <= a[2]) return { d: a[3], i: lo, dwell: true };
-  const b = p[lo + 1], f = Math.min(1, (e - a[2]) / ((b[1] - a[2]) || 1));
-  return { d: a[3] + (b[3] - a[3]) * f, i: lo, dwell: false };
+  return { d: a[3] + runAt(r, lo, e - a[2]), i: lo, dwell: false };
 }
 // Mercator point and unit tangent at shape distance d.
 function posAt(r, d) {
@@ -1043,6 +1069,9 @@ function paintCard() {
 // 120 times a second mostly redraws the same picture. Each new frame waits until the fastest train could have moved
 // STEP css px, and never longer than MAX_GAP. Anything else redraws at once and at the full rate: the map moving,
 // a cross-fade, the picked train's pulse, following a train, or any change of lines, direction, card or clock.
+// VMAX bounds the fastest a train ever goes, not its average: trains pull away and brake (profile() in the core), so
+// between stops they briefly run faster than distance over time. build.py keeps every run's peak under the line's
+// top speed (120 km/h at most), and tests/positions.test.mjs checks data.json's peaks against VMAX.
 const VMAX = 34, STEP = .2, MAX_GAP = 250; // m/s (the Airport Express's 120 km/h), css px, ms
 let lastUi = 0, lastDraw = -Infinity, seen = [];
 function frame(now) {
