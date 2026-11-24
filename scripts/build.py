@@ -377,6 +377,10 @@ if os.path.exists(FREQ) and os.path.exists(P4):
     fcfg = json.load(open(FREQ))
     routes = headways.apply(routes, stops, fcfg, json.load(open(P4)), phase4)
     meta["frequency"] = dict(source=fcfg["source"], as_of=fcfg["as_of"], peak_bands=fcfg["peak_bands"], peak_bands_source=fcfg["peak_bands_source"])
+SVC = os.path.join(HERE, "service_days.json")
+if os.path.exists(SVC):
+    import headways
+    meta["service"] = headways.service_meta(json.load(open(SVC)), routes)
 
 json.dump(dict(colors=col, routes=routes, stops=stops, meta=meta), open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(os.path.getsize(OUT), len(routes), sum(len(x['shape']) for x in routes))
