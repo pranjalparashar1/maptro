@@ -52,13 +52,36 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:poin
 #pickw{flex:0 1 auto;min-width:0}
 #pick{min-width:0;max-width:100%}
 #pick .lbl{overflow:hidden;text-overflow:ellipsis}
-#pick .n{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
 .dots{display:flex;flex:none}.dots i{width:12px;height:12px;border-radius:50%;margin-right:-4px;box-shadow:0 0 0 2px var(--surface)}
 .dots:empty{display:none}
 .chev{width:12px;height:12px;flex:none;opacity:.6;transition:transform 520ms var(--fold)}
 #pick[aria-expanded=true] .chev{transform:rotate(180deg)}
 #clockw{margin-left:auto}
 #clock{gap:8px;padding:0 14px;font-variant-numeric:tabular-nums}
+/* the clock is only a control while simulating: live time can't be sped up */
+#clockw:not(.sim){pointer-events:none}
+#clockw:not(.sim) .hx{display:none}
+#clock .k{width:9px;height:9px;flex:none;opacity:.55;margin-left:-2px}
+#clockw:not(.sim) #clock .k{display:none}
+#livew[hidden],#dirw[hidden]{display:none}
+#live{padding:0 14px 0 12px;gap:7px;font-size:14px}
+#live::before{content:"";width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.5px var(--live)}
+/* direction: a native select laid invisibly over a pill, so the phone's own picker opens */
+.top2{position:fixed;z-index:5;top:calc(var(--sat) + 62px);left:calc(var(--sal) + 12px);right:calc(var(--sar) + 12px);display:flex;pointer-events:none}
+.top2>*{pointer-events:auto}
+#dirw{max-width:100%;transition:opacity 320ms var(--settle),transform 420ms var(--settle)}
+#dirw.off{opacity:0;transform:translateY(-6px);pointer-events:none}
+#dir{max-width:100%;min-width:0;gap:8px;padding:0 14px 0 12px;font-size:14px}
+#dir .ar{width:16px;height:16px;flex:none;opacity:.8}
+#dir .lbl{overflow:hidden;text-overflow:ellipsis}
+#dsel{font-size:16px;-webkit-appearance:menulist;color:#000}
+/* "19 trains active": a small note that drops in under the controls, then leaves */
+#pop{position:fixed;z-index:4;top:calc(var(--sat) + 64px);left:50%;height:34px;border-radius:17px;padding:0 14px 0 11px;display:flex;align-items:center;gap:8px;
+  font-size:14px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none;
+  transform:translate(-50%,0);transition:opacity 320ms var(--settle),transform 340ms var(--spring)}
+#pop.off{opacity:0;transform:translate(-50%,-8px) scale(.96);transition:opacity 420ms var(--settle),transform 420ms var(--settle)}
+body.dir #pop{top:calc(var(--sat) + 114px)}
+#pop .dots i{box-shadow:0 0 0 2px var(--surface)}
 #clock .t{font-weight:650;letter-spacing:.2px}
 #clock .s{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
 #clock .s::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 2s ease-in-out infinite}
@@ -135,11 +158,20 @@ body.carded #disc{opacity:0;pointer-events:none}
 
 <div class="top">
   <span class="hw" id="pickw"><button id="pick" class="pill panel press" aria-expanded="false" aria-controls="menu">
-    <span class="dots" id="dots"></span><span class="lbl" id="plbl">Lines</span><span class="n" id="pcount"></span>
+    <span class="dots" id="dots"></span><span class="lbl" id="plbl">Lines</span>
     <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button></span>
-  <span class="hw" id="clockw"><button id="clock" class="pill panel press" aria-label="Clock. Tap to change speed"><span class="t" id="time">--:--</span><span class="s" id="spd">Live</span></button></span>
+  <span class="hw" id="clockw"><button id="clock" class="pill panel press" aria-label="Time now"><span class="t" id="time">--:--</span><span class="s" id="spd">Live</span><svg class="k" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l3.5 3.5-3.5 3.5M5.5 1.5L9 5 5.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></span>
+  <span class="hw" id="livew" hidden><button id="live" class="pill panel press" aria-label="Back to live time">Live</button></span>
 </div>
+<div class="top2">
+  <span class="hw off" id="dirw"><span id="dir" class="pill panel press" aria-hidden="true">
+    <svg class="ar" viewBox="0 0 16 16"><path d="M2.5 5.5h10m0 0L10 3m2.5 2.5L10 8M13.5 10.5h-10m0 0L6 8m-2.5 2.5L6 13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="lbl" id="dlbl">Both directions</span>
+    <svg class="chev" viewBox="0 0 12 12"><path d="M2 4.5l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </span><select id="dsel" class="hx" aria-label="Direction"></select></span>
+</div>
+<div id="pop" class="panel off" aria-live="polite"><span class="dots" id="popd"></span><span id="popt"></span></div>
 
 <div id="menu" class="panel" aria-label="Choose lines" hidden>
   <div class="mhead"><span>Lines</span><span class="ac"><span class="hw"><button id="all" class="press">All</button></span><span class="hw"><button id="none" class="press">None</button></span></span></div>
@@ -204,6 +236,37 @@ function posAt(r, d) {
   const L = Math.hypot(tx, ty) || 1; tx /= L; ty /= L;
   return [r.mx[lo] + (r.mx[hi] - r.mx[lo]) * f, r.my[lo] + (r.my[hi] - r.my[lo]) * f, tx, ty];
 }
+// Unit heading at shape distance d, averaged over +-span metres so a train turns smoothly through a bend
+// instead of snapping at each shape vertex.
+function headingAt(r, d, span = 45) {
+  const end = r.md[r.md.length - 1], a = posAt(r, Math.max(r.md[0], d - span)), b = posAt(r, Math.min(end, d + span));
+  const tx = b[0] - a[0], ty = b[1] - a[1], L = Math.hypot(tx, ty);
+  return L > 0 ? [tx / L, ty / L] : [a[2], a[3]];
+}
+// Splits each line's routes into two directions, A to B (dir 0) and B to A (dir 1), and names the ends.
+// Routes ending in _R run the other way to their pair. The estimated Airport and Magenta extensions were
+// built leaving the existing terminal, which is the opposite sense to the rest of their line, so they flip.
+const DIR_FLIP = new Set(['E_airport', 'E_magenta_kpe']);
+const DIR_ENDS = { MAGENTA: ['Majlis Park', 'Botanical Garden'] }; // a horseshoe: the farthest-apart rule picks the wrong end
+function directions(D) {
+  const out = {}, nm = id => D.stops[id][0];
+  for (const r of D.routes) { const rev = r.id.endsWith('_R'), base = rev ? r.id.slice(0, -2) : r.id; r.dir = (rev ? 1 : 0) ^ (DIR_FLIP.has(base) ? 1 : 0); }
+  for (const line of new Set(D.routes.map(r => r.line))) {
+    const rs = D.routes.filter(r => r.line === line), f = rs.filter(r => r.dir === 0);
+    if (!f.length || !rs.some(r => r.dir === 1)) continue;
+    const first = r => r.pat[0][0], last = r => r.pat[r.pat.length - 1][0];
+    let a, b;
+    if (DIR_ENDS[line]) [a, b] = DIR_ENDS[line];
+    else {
+      const main = f.reduce((x, y) => (y.dur > x.dur ? y : x)), bId = last(main), bs = D.stops[bId];
+      const far = id => Math.hypot(D.stops[id][1] - bs[1], D.stops[id][2] - bs[2]);
+      const cands = [...f.map(first), ...rs.filter(r => r.dir === 1).map(last)];
+      a = nm(cands.reduce((x, y) => (far(y) > far(x) ? y : x))); b = nm(bId);
+    }
+    out[line] = { a, b };
+  }
+  return out;
+}
 function lowerBound(a, v) { let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; }
 // Every train running at time t (seconds of the India day) on the given lines.
 function trainsAt(routes, t, lines) {
@@ -263,9 +326,11 @@ const ORDER = ['RED','YELLOW','BLUE','GREEN','VIOLET','PINK','MAGENTA','GRAY','O
 const NAMES = {RED:'Red',YELLOW:'Yellow',BLUE:'Blue',GREEN:'Green',VIOLET:'Violet',PINK:'Pink',MAGENTA:'Magenta',GRAY:'Grey','ORANGE/AIRPORT':'Airport Express',AQUA:'Aqua',RAPID:'Rapid Metro'};
 // Line colours, nudged brighter where DMRC's own read too dark on a night map.
 const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',RAPID:'#5aa0ec',GREEN:'#33b34f'};
-const DEFAULT = ['YELLOW','BLUE'];
-const SPEEDS = [0, 10, 60];
-const TRAIL_S = 50;
+const DEFAULT = ['ORANGE/AIRPORT'];
+const LINES_KEY = 'maptro-lines-v2'; // v2: the default became the Airport Express, so earlier saved picks start fresh
+const SPEEDS = [1, 10, 60]; // simulation only; live time always runs at 1x
+const TRAIL_S = 55;
+const TRACK_DIM = .36; // the track is the line colour at about a third, so the trains carry the light
 // Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
 // true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
 const BLACK_STYLE = { version: 8,
@@ -289,17 +354,20 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const CDN = ['https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js','https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'];
 
 let D, R, lines = [], sel = new Set(), color = {}, rgb = {};
-let speed = 0, simT = 0, lastReal = performance.now();
+let sim = false, speed = 10, simT = 0, lastReal = performance.now();
+let dirs = {}, dirSel = null, act = [], popPending = true; // dirSel: null for both directions, else 0 (A to B) or 1 (B to A)
 let cam, gpu, trains = [], picked = null, follow = false, labelsDirty = true, selDirty = true, refit = false;
 const ORIGIN = merc(77.2, 28.6);
 
 /* ---------- time ---------- */
 function curT() {
   const n = performance.now();
-  if (speed === 0) { lastReal = n; return nowIST(); }
+  if (!sim) { lastReal = n; return nowIST(); }
   simT = (simT + (n - lastReal) / 1000 * speed) % DAY; lastReal = n; return simT;
 }
-function setSpeed(s) { if (s && !speed) simT = nowIST(); speed = s; lastReal = performance.now(); paintClock(true); }
+// Simulation starts only from "Skip to 8 am"; speeds can change only inside it.
+function startSim(t, s) { curT(); sim = true; simT = t; speed = s; lastReal = performance.now(); paintClock(); }
+function goLive() { sim = false; lastReal = performance.now(); paintClock(); }
 const hhmm = s => { s = ((Math.floor(s) % DAY) + DAY) % DAY; return String(s / 3600 | 0).padStart(2, '0') + ':' + String((s % 3600) / 60 | 0).padStart(2, '0'); };
 
 /* ---------- colours ---------- */
@@ -323,28 +391,51 @@ void main(){
   gl_Position=vec4((s+o)/(u_res*.5)*c.w,0.,c.w);v_col=a_col;v_s=a_side*hw;
 }`;
 const LINE_FS = `precision highp float;varying vec4 v_col;varying float v_s;uniform float u_w,u_glow;
-void main(){float d=abs(v_s),a;
-  if(u_glow>.5){float x=clamp(d/(u_w*.5+1.),0.,1.);a=(1.-x)*(1.-x)*.28;}else a=clamp(u_w*.5+.5-d,0.,1.);
-  gl_FragColor=vec4(v_col.rgb,1.)*v_col.a*a;}`;
+void main(){float d=abs(v_s),a;vec3 c=v_col.rgb;
+  if(u_glow>1.5){ // track: a faded band with a faint lane down each side, so it reads as two tracks
+    a=clamp(u_w*.5+.5-d,0.,1.);float q=d-u_w*.27;c*=1.+.55*exp(-q*q/max(u_w*u_w*.004,.6));}
+  else if(u_glow>.5){float x=clamp(d/(u_w*.5+1.),0.,1.);a=(1.-x)*(1.-x)*.28;}else a=clamp(u_w*.5+.5-d,0.,1.);
+  gl_FragColor=vec4(c,1.)*v_col.a*a;}`;
 const PT_VS = `precision highp float;
 attribute vec2 a_pos,a_dir;attribute vec4 a_col;attribute float a_size,a_kind;
-uniform mat4 u_m;uniform vec2 u_res;uniform float u_off,u_scale;
-varying vec4 v_col;varying float v_kind;
+uniform mat4 u_m;uniform vec2 u_res;uniform float u_off,u_scale,u_tl,u_pad;
+varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
 void main(){
-  vec4 c=u_m*vec4(a_pos,0.,1.);vec2 s=c.xy/c.w*u_res*.5;
+  vec4 c=u_m*vec4(a_pos,0.,1.);vec2 s=c.xy/c.w*u_res*.5;v_dir=vec2(1.,0.);
   if(dot(a_dir,a_dir)>0.){vec4 c2=u_m*vec4(a_pos+a_dir*1e-6,0.,1.);vec2 t=c2.xy/c2.w*u_res*.5-s;
-    if(dot(t,t)>1e-12){t=normalize(t);s+=vec2(-t.y,t.x)*u_off;}}
-  gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=a_size*u_scale;v_col=a_col;v_kind=a_kind;
+    if(dot(t,t)>1e-12){t=normalize(t);s+=vec2(-t.y,t.x)*u_off;v_dir=t;}}
+  // trains (kind 0) and their selection outline (kind 2) are sized from the train's length; stations from a_size
+  float px=a_kind>1.5||a_kind<.5?u_tl*a_size+2.*u_pad:a_size*u_scale;
+  gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=px;v_px=px;v_sz=a_size;v_col=a_col;v_kind=a_kind;
 }`;
-const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind;uniform float u_body;
-void main(){vec2 p=gl_PointCoord*2.-1.;float r=length(p);if(r>1.)discard;
-  if(v_kind<.5){ // train: additive glow pass, or the solid body on top
-    if(u_body<.5){gl_FragColor=vec4(v_col.rgb*exp(-r*r*4.5)*.75,0.)*v_col.a;}
-    else{float aa=.07;float edge=smoothstep(.52,.52-aa,r);float body=smoothstep(.43,.43-aa,r);float core=smoothstep(.2,.2-aa,r);
-      vec3 c=mix(vec3(0.),mix(v_col.rgb,vec3(1.),.25),body);c=mix(c,vec3(1.),core*.9);gl_FragColor=vec4(c,1.)*edge*v_col.a;}}
-  else if(v_kind<1.5){float ring=smoothstep(.98,.84,r);float inner=smoothstep(.58,.46,r);
-    gl_FragColor=vec4(mix(v_col.rgb,vec3(0.),inner),1.)*ring*v_col.a;}
-  else{float a=smoothstep(1.,.9,r)*smoothstep(.74,.84,r);gl_FragColor=vec4(1.)*a*v_col.a;}
+// A train seen from above: a body with a rounded tail and a bullet nose, pointing the way it travels.
+const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
+uniform float u_body,u_tl,u_tw,u_coach;
+float ell(vec2 q,vec2 r){float k=length(q/r);vec2 g=q/(r*r)/max(k,1e-4);return (k-1.)/max(length(g),1e-4);}
+float bullet(vec2 q,float L,float W,out float glass){
+  float hl=L*.5,hw=W*.5,nose=min(W*1.45,L*.42),x0=hl-nose,rr=hw*.6;
+  vec2 c=vec2((x0-hl)*.5,0.),b=vec2((x0+hl)*.5,hw),d=abs(q-c)-b+rr;
+  float box=length(max(d,0.))+min(max(d.x,d.y),0.)-rr;
+  glass=max(ell(q-vec2(x0,0.),vec2(nose*.62,hw*.56)),x0-nose*.05-q.x);
+  return min(box,ell(q-vec2(x0,0.),vec2(nose,hw)));}
+void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);
+  if(v_kind<.5||v_kind>1.5){
+    vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
+    float L=u_tl*v_sz,W=u_tw*v_sz,gs;float d=bullet(q,L,W,gs);
+    if(v_kind>1.5){float a=clamp(1.3-abs(d-3.2),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
+    if(u_body<.5){float pad=(v_px-L)*.5;float g=exp(-max(d,0.)/(W*.75))*(1.-smoothstep(pad*.45,pad*.9,d));gl_FragColor=vec4(v_col.rgb*g*.95,0.)*v_col.a;return;}
+    float edge=clamp(.5-d,0.,1.);
+    vec3 fill=mix(v_col.rgb,vec3(1.),.3);
+    // gaps between coaches, once the train is big enough to show them
+    float x0=L*.5-min(W*1.45,L*.42),cl=(x0+L*.5)/3.;float gx=abs(mod(q.x+L*.5+cl*.5,cl)-cl*.5);
+    if(u_coach>.5&&q.x>-L*.5+cl*.5&&q.x<x0)fill*=mix(.35,1.,clamp(gx-.35,0.,1.));
+    vec3 col=mix(vec3(0.),fill,1.-smoothstep(-1.4,-.4,d)); // a dark rim, so the train never melts into its track
+    col=mix(col,vec3(.03),clamp(.5-gs,0.,1.)*.85);       // windscreen
+    col=mix(col,vec3(1.),clamp(.5-(L*.5-1.4-q.x),0.,1.)*clamp(.5-d,0.,1.)*.9); // headlight at the nose
+    gl_FragColor=vec4(col,1.)*edge*v_col.a;return;}
+  float r=length(p);if(r>1.)discard;
+  float ring=smoothstep(.98,.84,r);float inner=smoothstep(.58,.46,r);
+  gl_FragColor=vec4(mix(v_col.rgb,vec3(0.),inner),1.)*ring*v_col.a;
 }`;
 
 class Buf { // growable Float32 / Uint16 writer
@@ -366,6 +457,13 @@ function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercat
   for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
 }
 
+// Sizes in CSS pixels by zoom. The track is two trains wide, so trains in each direction run in their own lane.
+function sizes(z) {
+  const tw = Math.max(2.6, Math.min(10, 2.6 + (z - 10) * 1.45));
+  const track = tw * 2 + 1.5;
+  // stations stay small dots when zoomed out and grow to span the track when zoomed in
+  return { tw, tl: tw * 3.4, track, lane: tw * .5 + .4, st: Math.max(4.5, Math.min(track + 3, 4 + (z - 10) * 3.4)) };
+}
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
     trV: new Buf(Float32Array), trI: new Buf(Uint16Array), headV: new Buf(Float32Array), fxV: new Buf(Float32Array),
@@ -400,40 +498,36 @@ function makeGpu() {
     for (let r = 0; r < 4; r++) M[12 + r] = m[r] * ORIGIN[0] + m[4 + r] * ORIGIN[1] + m[12 + r];
     if (g.isGL2) gl.bindVertexArray(null); else if (g.vao) g.vao.bindVertexArrayOES(null);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND);
-    const res = [gl.drawingBufferWidth, gl.drawingBufferHeight], dpr = view.dpr, z = view.zoom;
-    const lw = Math.max(1.8, Math.min(5.5, 1.8 + (z - 10) * 1.1)) * dpr;
+    const res = [gl.drawingBufferWidth, gl.drawingBufferHeight], dpr = view.dpr, z = view.zoom, S = sizes(z);
+    const tw = S.tw * dpr, tl = S.tl * dpr, trackW = S.track * dpr, off = S.lane * dpr;
     if (g.staticDirty) { upload(gl, gl.ARRAY_BUFFER, g.b.lineV, g.lineV.view(), gl.STATIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.lineI, g.lineI.view(), gl.STATIC_DRAW);
       upload(gl, gl.ARRAY_BUFFER, g.b.stV, g.stV.view(), gl.STATIC_DRAW); g.staticDirty = false; }
-    // lines: glow (MAX blend so overlaps don't stack), then core
+    gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    // track: one solid faded band per line (pre-dimmed colour, so shared sections don't brighten), two lanes wide
     const L = g.line; gl.useProgram(L.p); gl.uniformMatrix4fv(L.u.u_m, false, M); gl.uniform2fv(L.u.u_res, res);
     gl.bindBuffer(gl.ARRAY_BUFFER, g.b.lineV); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.b.lineI); bindAttrs(gl, LINE_LAYOUT, 11);
-    const nI = g.lineI.n;
-    if (nI) {
-      if (g.minmax) { gl.blendEquation(g.minmax); gl.blendFunc(gl.ONE, gl.ONE); }
-      else { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); }
-      gl.uniform1f(L.u.u_w, lw * 6); gl.uniform1f(L.u.u_off, 0); gl.uniform1f(L.u.u_glow, 1);
-      gl.drawElements(gl.TRIANGLES, nI, gl.UNSIGNED_SHORT, 0);
-      gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.uniform1f(L.u.u_w, lw); gl.uniform1f(L.u.u_glow, 0);
-      gl.drawElements(gl.TRIANGLES, nI, gl.UNSIGNED_SHORT, 0);
-    }
-    const off = Math.max(0, Math.min(3.5, (z - 11) * 1.6)) * dpr;
-    // trails
-    if (g.trI.n) {
-      upload(gl, gl.ARRAY_BUFFER, g.b.trV, g.trV.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.trI, g.trI.view(), gl.DYNAMIC_DRAW);
-      bindAttrs(gl, LINE_LAYOUT, 11); gl.uniform1f(L.u.u_w, lw * 1.35); gl.uniform1f(L.u.u_off, off);
-      gl.blendFunc(gl.ONE, gl.ONE); gl.drawElements(gl.TRIANGLES, g.trI.n, gl.UNSIGNED_SHORT, 0); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    }
+    if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0); gl.uniform1f(L.u.u_glow, 2);
+      gl.drawElements(gl.TRIANGLES, g.lineI.n, gl.UNSIGNED_SHORT, 0); }
     unbind(gl, 5);
-    // points: stations, train heads (additive), selection ring
+    // stations sit on the track, under the trains
     const P = g.pt; gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
-    const stPx = Math.max(4, Math.min(12, 4 + (z - 10) * 1.8)), trPx = Math.max(11, Math.min(26, 12 + (z - 10) * 3.5));
-    const pts = (buf, data, scale, o, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
-      bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
-    gl.uniform1f(P.u.u_body, 0); pts(g.b.stV, g.stV, stPx, 0);
-    gl.blendFunc(gl.ONE, gl.ONE); pts(g.b.headV, g.headV, trPx * 1.6, off); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.uniform1f(P.u.u_body, 1); pts(g.b.headV, g.headV, trPx, off, true); gl.uniform1f(P.u.u_body, 0);
-    pts(g.b.fxV, g.fxV, trPx, off);
+    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_coach, S.tw >= 5 ? 1 : 0);
+    const pts = (buf, data, scale, o, pad, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
+      bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
+    gl.uniform1f(P.u.u_body, 0); pts(g.b.stV, g.stV, S.st, 0, 0);
+    unbind(gl, 5);
+    // trails, in the train's lane, added light
+    if (g.trI.n) {
+      gl.useProgram(L.p);
+      upload(gl, gl.ARRAY_BUFFER, g.b.trV, g.trV.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.trI, g.trI.view(), gl.DYNAMIC_DRAW);
+      bindAttrs(gl, LINE_LAYOUT, 11); gl.uniform1f(L.u.u_w, tw * .78); gl.uniform1f(L.u.u_off, off); gl.uniform1f(L.u.u_glow, 0);
+      gl.blendFunc(gl.ONE, gl.ONE); gl.drawElements(gl.TRIANGLES, g.trI.n, gl.UNSIGNED_SHORT, 0); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      unbind(gl, 5); gl.useProgram(P.p);
+    }
+    // trains: an added glow, then the solid body on top, then the selection outline
+    gl.blendFunc(gl.ONE, gl.ONE); pts(g.b.headV, g.headV, 1, off, tw * 2.6); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniform1f(P.u.u_body, 1); pts(g.b.headV, g.headV, 1, off, 2 * dpr, true); gl.uniform1f(P.u.u_body, 0);
+    pts(g.b.fxV, g.fxV, 1, off, 6 * dpr);
     unbind(gl, 5);
     gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
   };
@@ -450,7 +544,7 @@ function buildStatic() {
     for (const r of R) {
       if (r.line !== l || (r.id.endsWith('_R') && ids.has(r.id.slice(0, -2)))) continue;
       const pts = []; for (let i = 0; i < r.mx.length; i++) pts.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1]]);
-      polyline(g.lineV, g.lineI, pts, [...rgb[l], 1]);
+      polyline(g.lineV, g.lineI, pts, [...rgb[l].map(v => v * TRACK_DIM), 1]);
     }
   }
   // stations, one per name, interchanges (on 2+ lines anywhere) in white and larger
@@ -473,20 +567,17 @@ function buildStatic() {
 }
 function buildDynamic(t) {
   const g = gpu; g.trV.reset(); g.trI.reset(); g.headV.reset(); g.fxV.reset();
-  trains = trainsAt(R, t, sel);
-  const cnt = {};
+  trains = trainsAt(act, t, null);
   for (const o of trains) {
-    cnt[o.r.line] = (cnt[o.r.line] || 0) + 1;
     const c = rgb[o.r.line];
     const tr = trailPoints(o.r, o.e, TRAIL_S).map(p => [p[0] - ORIGIN[0], p[1] - ORIGIN[1], p[2]]);
-    polyline(g.trV, g.trI, tr, [c[0] * .5 + .5, c[1] * .5 + .5, c[2] * .5 + .5, .7], true);
-    const [x, y, tx, ty] = o.pos;
+    polyline(g.trV, g.trI, tr, [c[0] * .6 + .4, c[1] * .6 + .4, c[2] * .6 + .4, .75], true);
+    const [x, y] = o.pos, [tx, ty] = headingAt(o.r, o.d);
     const isPick = picked && picked.r === o.r && picked.s0 === o.s0;
-    g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, (o.dwell ? 1.12 : 1) * (isPick ? 1.25 : 1), 0);
+    g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, isPick ? 1.18 : 1, 0);
     if (isPick) { picked.o = o; const a = RM.matches ? 1 : .55 + .45 * Math.sin(performance.now() / 260);
-      g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 2.3, 2); }
+      g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 1.18, 2); }
   }
-  return cnt;
 }
 
 /* ---------- cameras ---------- */
@@ -592,10 +683,10 @@ function drawLabels() {
   const W = innerWidth, H = innerHeight, dpr = DPR();
   if (lc.width !== Math.round(W * dpr) || lc.height !== Math.round(H * dpr)) { lc.width = Math.round(W * dpr); lc.height = Math.round(H * dpr); }
   lx.setTransform(dpr, 0, 0, dpr, 0, 0); lx.clearRect(0, 0, W, H);
-  const z = cam.zoom(), placed = [], r0 = Math.max(4, Math.min(13, 4 + (z - 10) * 2)) / 2 + 5;
+  const z = cam.zoom(), placed = [], r0 = sizes(z).st / 2 + 5;
   const hit = b => placed.some(q => b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]);
   // keep labels clear of the top controls
-  placed.push([0, 0, W, $('pick').getBoundingClientRect().bottom + 4]);
+  placed.push([0, 0, W, ($('dirw').classList.contains('off') ? $('pick') : $('dir')).getBoundingClientRect().bottom + 4]);
   lx.lineJoin = 'round'; lx.textBaseline = 'middle';
   // a label may not cover another interchange or terminal, so it can't read as that station's name
   const dots = labelList.map(s => cam.project(s.m[0], s.m[1]));
@@ -633,14 +724,52 @@ function haptic(btn) {
   h.addEventListener('click', e => { e.stopPropagation(); buzz(); btn.click(); });
   w.appendChild(h);
 }
-const save = () => { try { localStorage.setItem('maptro-lines', JSON.stringify([...sel])); } catch (e) {} };
+const save = () => { try { localStorage.setItem(LINES_KEY, JSON.stringify([...sel])); } catch (e) {} };
+// Station names as they read on a sign: no "(Rapid Metro)" or "Sector - 21" spacing.
+const short = n => n.replace(/\s*\(.*?\)/g, '').replace(/\s+-\s+(?=\d)/g, ' ').replace(/\s+-\s+/g, '-').trim();
+// Routes drawn as trains: the chosen lines, and with one line chosen, the chosen direction.
+function setActive() {
+  const one = sel.size === 1 ? [...sel][0] : null;
+  if (!one || !dirs[one]) dirSel = null;
+  act = R.filter(r => sel.has(r.line) && (dirSel === null || r.dir === dirSel));
+}
+function paintDir() {
+  const one = sel.size === 1 ? [...sel][0] : null, d = one && dirs[one], w = $('dirw');
+  w.classList.toggle('off', !d); document.body.classList.toggle('dir', !!d); labelsDirty = true;
+  $('dsel').disabled = !d;
+  if (!d) return;
+  const A = short(d.a), B = short(d.b);
+  const opts = [['both', 'Both directions'], ['0', `${A} → ${B}`], ['1', `${B} → ${A}`]];
+  const key = opts.map(o => o[1]).join('|');
+  if ($('dsel')._k !== key) { $('dsel')._k = key; $('dsel').innerHTML = opts.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); }
+  $('dsel').value = dirSel === null ? 'both' : String(dirSel);
+  $('dlbl').textContent = dirSel === null ? 'Both directions' : `To ${dirSel === 0 ? B : A}`;
+  $('dir').style.setProperty('--c', color[one]);
+}
+$('dsel').onchange = e => { buzz(); const v = e.target.value; dirSel = v === 'both' ? null : +v; setActive(); paintDir(); popPending = true;
+  if (picked && picked.kind === 'train' && dirSel !== null && picked.r.dir !== dirSel) closeCard(); };
+// "19 trains active", shown for a moment after the lines or the direction change
+let popTimer = 0;
+function showPop() {
+  const n = trains.length;
+  clearTimeout(popTimer);
+  if (!n) { $('pop').classList.add('off'); return; }
+  const on = lines.filter(l => sel.has(l));
+  $('popd').innerHTML = on.slice(0, 3).map(l => `<i style="background:${color[l]}"></i>`).join('');
+  $('popt').textContent = `${n} train${n === 1 ? '' : 's'} active`;
+  const el = $('pop');
+  if (!el.classList.contains('off')) { el.classList.add('off'); void el.offsetWidth; } // replay the drop-in for a fresh count
+  el.classList.remove('off');
+  popTimer = setTimeout(() => el.classList.add('off'), 2600);
+}
 function buildMenu() {
   $('rows').innerHTML = lines.map(l => `<label class="row" style="--c:${color[l]}"><input class="hx" type="checkbox" switch value="${l}" ${sel.has(l) ? 'checked' : ''}>
     <span class="sw"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
     <span class="nm">${NAMES[l] || l}</span></label>`).join('');
   $('rows').onchange = e => { buzz(); const l = e.target.value; e.target.checked ? sel.add(l) : sel.delete(l); selChanged(); };
 }
-function selChanged() { selDirty = true; refit = true; save(); paintPicker(); if (picked && !sel.has(picked.r.line)) closeCard(); }
+function selChanged() { selDirty = true; refit = true; dirSel = null; save(); setActive(); paintPicker(); paintDir(); popPending = true;
+  if (picked && picked.kind === 'train' && !sel.has(picked.r.line)) closeCard(); }
 function paintPicker() {
   const on = lines.filter(l => sel.has(l));
   $('dots').innerHTML = on.slice(0, 5).map(l => `<i style="background:${color[l]}"></i>`).join('');
@@ -655,23 +784,24 @@ $('pick').onclick = e => { e.stopPropagation(); openMenu($('menu').hidden); };
 $('all').onclick = () => { lines.forEach(l => sel.add(l)); selChanged(); };
 $('none').onclick = () => { sel.clear(); selChanged(); };
 document.addEventListener('pointerdown', e => { if (!$('menu').hidden && !e.target.closest('#menu,#pickw')) openMenu(false); }, true);
-for (const id of ['pick', 'clock', 'all', 'none']) haptic($(id));
-$('clock').onclick = () => setSpeed(SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]);
+for (const id of ['pick', 'clock', 'live', 'all', 'none']) haptic($(id));
+$('clock').onclick = () => { if (sim) { speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; curT(); paintClock(); } };
+$('live').onclick = goLive;
 
-function paintClock(force) {
+function paintClock() {
   const t = curT(); $('time').textContent = hhmm(t);
-  $('spd').textContent = speed ? speed + '×' : 'Live'; $('clock').classList.toggle('sim', !!speed);
+  $('spd').textContent = sim ? speed + '×' : 'Live';
+  $('clock').classList.toggle('sim', sim); $('clockw').classList.toggle('sim', sim); $('livew').hidden = !sim;
+  $('clock').setAttribute('aria-label', sim ? `Simulated time ${hhmm(t)}, ${speed} times speed. Tap to change speed` : `Time now, ${hhmm(t)}`);
 }
-let counts = {};
 function paintCounts() {
-  let tot = 0; for (const l of lines) { const n = counts[l] || 0; if (sel.has(l)) tot += n; }
-  $('pcount').textContent = sel.size ? `· ${tot}` : '';
-  $('pick').setAttribute('aria-label', `${$('plbl').textContent}, ${tot} trains running. Choose lines`);
+  const tot = trains.length;
+  $('pick').setAttribute('aria-label', `${$('plbl').textContent}, ${tot} trains active. Choose lines`);
   // nothing running on the chosen lines: offer to skip ahead
   const empty = sel.size > 0 && tot === 0 && !picked;
   if (empty !== !$('toast').hidden) {
     $('toast').hidden = !empty;
-    if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><span class="hw"><button class="btn act press" id="ff">Skip to 8 am</button></span>`, haptic($('ff')), $('ff').onclick = () => { simT = 8 * 3600; speed = 10; lastReal = performance.now(); paintClock(); };
+    if (empty) $('toast').innerHTML = `<b>The trains are asleep</b><span>Service runs from about 5:30 to 23:30.</span><br><span class="hw"><button class="btn act press" id="ff">Skip to 8 am</button></span>`, haptic($('ff')), $('ff').onclick = () => { startSim(8 * 3600, 10); popPending = true; };
   }
 }
 
@@ -715,7 +845,7 @@ function paintCard() {
     const nm = D.stops[o.next][0], [w, u] = mins(o.eta - t);
     html = `<div class="nx">${o.dwell ? `<span class="w">At</span><span class="d"><b>${nm}</b></span>` : `<span class="w">${w}<small>${u}</small></span><span class="d">Next stop<br><b>${nm}</b></span>`}</div>`;
   } else {
-    const deps = departures(R, picked.s.ids, t, sel, 4);
+    const deps = departures(act, picked.s.ids, t, null, 4);
     html = deps.length ? deps.map(d => { const [w, u] = mins(d.time - t); return `<div class="nx"><span class="w">${w}<small>${u}</small></span><span class="d"><i style="background:${color[d.r.line]}"></i>to ${D.stops[d.to][0]}${d.r.est ? ' <span class="tag">estimated</span>' : ''}</span></div>`; }).join('') : '<div class="su">No more trains today.</div>';
   }
   const bd = $('cbd'); if (bd && bd._h !== html) { bd._h = html; bd.innerHTML = html; }
@@ -726,7 +856,8 @@ let lastUi = 0;
 function frame(now) {
   const t = curT();
   if (selDirty) { selDirty = false; buildStatic(); }
-  counts = buildDynamic(t);
+  buildDynamic(t);
+  if (popPending && $('menu').hidden) { popPending = false; showPop(); }
   if (follow && picked && picked.o) cam.center(picked.o.pos[0], picked.o.pos[1]);
   cam.redraw();
   if (labelsDirty) { labelsDirty = false; drawLabels(); }
@@ -747,16 +878,17 @@ Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async 
   D = prepare(data); R = D.routes;
   lines = ORDER.filter(l => R.some(r => r.line === l)).concat([...new Set(R.map(r => r.line))].filter(l => !ORDER.includes(l)));
   for (const l of lines) { color[l] = SHOW[l] || D.colors[l] || '#ffffff'; rgb[l] = hexRgb(color[l]); }
-  let saved = null; try { saved = JSON.parse(localStorage.getItem('maptro-lines')); } catch (e) {}
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(LINES_KEY)); } catch (e) {}
   sel = new Set((Array.isArray(saved) ? saved : DEFAULT).filter(l => lines.includes(l)));
-  buildMenu(); paintPicker();
+  dirs = directions(D); setActive();
+  buildMenu(); paintPicker(); paintDir(); paintClock();
   gpu = makeGpu(); buildStatic(); selDirty = false;
   try { cam = ml ? mapLibreCamera(ml) : canvasCamera(); await cam.ready; }
   catch (e) { try { if (cam && cam.map) cam.map.remove(); cam = canvasCamera(); } catch (e2) { document.body.insertAdjacentHTML('beforeend', '<div class="err">This map needs WebGL, which this browser has turned off.</div>'); return; } }
   cam.fit(selBounds(), false);
   document.documentElement.dataset.ready = cam.kind;
   // used by the screenshot script to find a train to tap
-  window.__maptro = { trainsOnScreen: () => trains.map(o => cam.project(o.pos[0], o.pos[1])) };
+  window.__maptro = { trainsOnScreen: () => trains.map(o => cam.project(o.pos[0], o.pos[1])), view: (lon, lat, z) => cam.map && cam.map.jumpTo({ center: [lon, lat], zoom: z }) };
   requestAnimationFrame(frame);
 }).catch(e => { document.body.insertAdjacentHTML('beforeend', '<div class="err"><span>Couldn\'t load the timetable.</span><button class="btn act press" onclick="location.reload()">Tap to reload</button></div>'); console.error(e); });
 })();

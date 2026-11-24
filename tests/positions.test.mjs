@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const core = new Function(src + '\nreturn {DAY,nowIST,merc,unmerc,prepare,stateAt,posAt,trainsAt,trailPoints,departures,lowerBound};')();
+const core = new Function(src + '\nreturn {DAY,nowIST,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound};')();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
 const H = h => h * 3600;
@@ -100,4 +100,31 @@ test('departures are upcoming and sorted', () => {
 
 test('estimated Phase 4 trains appear', () => {
   assert.ok(core.trainsAt(R, H(9), null).some(o => o.r.est));
+});
+
+test('every line splits into two directions with named ends', () => {
+  const dirs = core.directions(D);
+  const name = id => D.stops[id][0];
+  assert.deepEqual(dirs.RED, { a: 'Rithala', b: 'Shaheed Sthal (New Bus Adda)' });
+  assert.deepEqual(dirs['ORANGE/AIRPORT'], { a: 'Yashobhoomi Dwarka Sector 25', b: 'New Delhi' });
+  for (const r of R) {
+    assert.ok(r.dir === 0 || r.dir === 1, r.id);
+    if (r.line === 'RED') assert.equal(r.dir, name(r.pat[0][0]) === 'Rithala' ? 0 : 1, r.id);
+    if (r.line === 'ORANGE/AIRPORT') assert.equal(r.dir, name(r.pat.at(-1)[0]) === 'New Delhi' || name(r.pat[0][0]) === 'Yashobhoomi Dwarka Sector 25' ? 0 : 1, r.id);
+  }
+  // both directions together are every train, and neither is empty by day
+  const red = R.filter(r => r.line === 'RED'), t = H(9);
+  const n0 = core.trainsAt(red.filter(r => r.dir === 0), t, null).length, n1 = core.trainsAt(red.filter(r => r.dir === 1), t, null).length;
+  assert.ok(n0 > 3 && n1 > 3);
+  assert.equal(n0 + n1, core.trainsAt(R, t, new Set(['RED'])).length);
+});
+
+test('heading is a unit vector pointing the way the train moves', () => {
+  for (const o of core.trainsAt(R, H(10), null)) {
+    const [hx, hy] = core.headingAt(o.r, o.d);
+    assert.ok(Math.abs(Math.hypot(hx, hy) - 1) < 1e-6, o.r.id);
+    const end = o.r.md[o.r.md.length - 1];
+    if (o.d > 200 && o.d < end - 200) { const a = core.posAt(o.r, o.d - 100), b = core.posAt(o.r, o.d + 100);
+      assert.ok(hx * (b[0] - a[0]) + hy * (b[1] - a[1]) > 0, `${o.r.id} heading backwards`); }
+  }
 });

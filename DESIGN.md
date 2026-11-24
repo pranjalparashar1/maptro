@@ -90,7 +90,20 @@ Numbers that change (the clock, train count, minutes) use tabular numerals so th
 ## 5. Components
 
 ### Top pills
-Left: the line picker (coloured dots, a short name such as "Yellow & Blue" or "3 lines", the train count, a chevron). Right: the clock (time and a state word: "Live", "10×" or "60×"). Tap the clock to cycle speed.
+Left: the line picker (coloured dots, a short name such as "Airport Express" or "3 lines", a chevron). Right: the clock (time and a state word). It opens on the Airport Express line.
+
+The clock is only a control in simulation. Live time can't be sped up, so in Live the clock is plain text. "Skip to 8 am" starts a simulation at 10×; the clock then shows the speed in amber with a small » and cycles 1×, 10×, 60× on tap, and a "Live" pill appears beside it to go back to real time.
+
+### Direction pill
+Shown under the line picker when exactly one line is chosen. It is a native `<select>` laid invisibly over a pill, so the phone's own picker opens. Options: "Both directions" (the default, and what any new choice of line resets to), "Rithala → Shaheed Sthal" and "Shaheed Sthal → Rithala". The pill reads "Both directions" or "To Rithala". Only trains, and station departures, in the chosen direction are shown; the track stays. Which way each route runs comes from `directions()` in the core block.
+
+### Count note
+"19 trains active", with the line's dot: a small pill that drops in under the controls for 2.6 seconds when the page opens, the lines change (once the picker closes) or the direction changes. It replaced the number that sat in the line picker, which read as a static label. Not shown when no train is running (the quiet-hours sheet says that).
+
+### Trains and track
+- **Track:** one solid band per line, the line colour at 36% (`TRACK_DIM`), two trains wide, with a faint lane down each side so it reads as double track. Solid, so shared sections don't brighten.
+- **Trains:** seen from above: a body in the line colour lifted towards white, coach gaps once it is 5px wide or more, a bullet nose with a dark windscreen and a white headlight, and a thin dark rim so it never melts into its track. An added glow in the line colour sits under it, and a fading trail runs behind in its lane. Trains run in the left lane, as Delhi's do, so the two directions never overlap. The heading is averaged over 90 m of track, so trains turn smoothly through bends.
+- **Sizes** (`sizes()` in `index.html`) grow with zoom: train width 2.6 to 10px, length 3.4× width, track 2× train width plus 1.5px, stations from a 4.5px dot to a ring spanning the track.
 
 ### Line picker
 A dropdown that unfolds from the pill. Header "Lines" with All and None. One row per line: a ring in the line colour that fills with a tick when chosen, and the line's name. Each row is a real `switch` checkbox stretched over the row, so the tap is native and gives the haptic tick. Tapping outside closes it, and the map then fits the chosen lines.
@@ -128,6 +141,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 | `--settle` | `cubic-bezier(.25,.6,.3,1)`, 240-420ms | sheets in and out, fades, picker closing |
 | `--spring` | 340ms `cubic-bezier(.3,1.6,.5,1)` | a pressed control springing back, ticks popping in |
 | Map refit | 900ms (MapLibre's default ease) | fitting the chosen lines |
+| Count note | in on `--spring` 340ms, out on `--settle` 420ms | "19 trains active" |
 
 ---
 
@@ -137,7 +151,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 - **Press feedback on everything tappable**, instant on press (`scale(.95)`, no transition, because the finger may be about to drag) and springing back on release.
 - **Haptics:** an invisible real `<input type="checkbox" switch>` is stretched over each button (opacity 0, never `appearance: none`), so iOS gives its own tick; the tap is passed on to the button. Android gets `navigator.vibrate(8)` instead. Tapping a station also vibrates on Android. iOS can't tick for taps on the map canvas.
 - **No modals.** The picker is a dropdown, cards are sheets, nothing blocks the map.
-- **Remembered:** the chosen lines (localStorage `maptro-lines`).
+- **Remembered:** the chosen lines (localStorage `maptro-lines-v2`; v2 so everyone sees the new Airport Express default once). The direction is not remembered: a line always opens with both.
 - **Keyboard (laptops):** every control is a real button or checkbox, with a 3px white focus ring.
 
 ---
@@ -145,7 +159,7 @@ A native `<details>` pill at the bottom left. Open, it says the project is perso
 ## 8. Copy
 
 - Short, plain, warm. Sentence case, no all-caps labels. One line wherever possible.
-- Words in use: "Lines", "All", "None", "Live", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
+- Words in use: "Lines", "All", "None", "Live", "Both directions", "To …", "19 trains active", "Follow", "Next stop", "At", "to …", "Scheduled", "Estimated", "Disclaimer", "The trains are asleep", "Skip to 8 am", "No more trains today.", "Tap to reload".
 - Never call a position live or real-time.
 
 ---
@@ -159,6 +173,7 @@ Where a Kiron rule didn't carry over as-is, and why:
 - **Poppins** → the system font instead. Native first wins over brand, and it means no font download.
 - **Orange and blue accents** → not copied. Colour on Maptro belongs to the metro lines, so the chrome is greyscale and the action colour is white.
 - **Glass and blur** (Maptro's earlier look) → removed. It cost a blur every frame over a moving map, and on true black a solid panel reads the same.
+- **The train count moved out of the line picker** into the count note. A number that never stops changing beside a label read as part of the label; shown for a moment after a change, it answers "how many?" exactly when it is asked.
 - **The train card no longer shows the trip's start time.** It was a long uppercase line that few would read; the train's place on the map already identifies it.
 
 ---
