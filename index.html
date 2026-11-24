@@ -414,29 +414,50 @@ void main(){
   vec4 c=u_m*vec4(a_pos,0.,1.);vec2 s=c.xy/c.w*u_res*.5;v_dir=vec2(1.,0.);
   if(dot(a_dir,a_dir)>0.){vec4 c2=u_m*vec4(a_pos+a_dir*1e-6,0.,1.);vec2 t=c2.xy/c2.w*u_res*.5-s;
     if(dot(t,t)>1e-12){t=normalize(t);s+=vec2(-t.y,t.x)*u_off;v_dir=t;}}
-  // trains (kind 0) and their selection outline (kind 2) are sized from the train's length; platforms (kind 1) from u_scale
+  // train dots (kind 0) and their ring (kind 2) are sized from u_tl; station dots (1) and their lights (3) from u_scale
   float px=a_kind>1.5||a_kind<.5?u_tl*a_size+2.*u_pad:a_size*u_scale;
   gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=px;v_px=px;v_sz=a_size;v_col=a_col;v_kind=a_kind;
 }`;
-// A train is a bullet seen from above: one solid colour, a square-cornered tail (corners from the same unit as the
-// track) and a tapered nose that points the way it travels, with a faint glow around it.
-// A platform is the track widening, a train long, its corners concentric with a train's tail.
+// Round marks, drawn as point sprites: a train as a dot when zoomed out (kind 0) and its selection ring (kind 2),
+// a station's dot (kind 1), and the light inside a station's dot while a train is in it (kind 3).
 const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
-uniform float u_tl,u_tw,u_gap,u_rad,u_icon;uniform vec2 u_pl;
+uniform float u_tw,u_gap,u_st,u_fade;
+void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);float r=length(p)*v_px*.5;
+  if(v_kind>.5&&v_kind<1.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.5-r+.5,0.,1.)*v_col.a;return;}
+  if(v_kind>2.5){gl_FragColor=vec4(v_col.rgb,1.)*clamp(u_st*.3*v_sz-r+.5,0.,1.)*v_col.a;return;}
+  float d=r-u_tw*.85*v_sz;
+  if(v_kind>1.5){float a=clamp(1.-abs(d-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a*u_fade;return;}
+  float edge=(1.-max(abs(p.x),abs(p.y)))*v_px*.5,glow=.26*exp(-max(d,0.)/(u_tw*.38))*smoothstep(0.,u_tw*.9,edge);
+  gl_FragColor=vec4(v_col.rgb,1.)*max(clamp(.5-d,0.,1.),glow)*v_col.a*u_fade;
+}`;
+// A train seen from above when zoomed in: a minimal bullet in one solid colour with a faint glow. It is drawn as a
+// ribbon laid along the track itself (built each frame from the route's own points), so through a bend the whole
+// train curves with the track instead of a rigid picture swinging round its middle.
+const TR_VS = `precision highp float;
+attribute vec2 a_pos,a_prev,a_next;attribute float a_side,a_x,a_len;
+uniform mat4 u_m;uniform vec2 u_res;uniform float u_w,u_off,u_dpr;
+varying float v_s,v_x,v_len;
+vec2 scr(vec4 c){return c.xy/c.w*u_res*.5;}
+void main(){
+  vec4 c=u_m*vec4(a_pos,0.,1.);vec2 s=scr(c),sp=scr(u_m*vec4(a_prev,0.,1.)),sn=scr(u_m*vec4(a_next,0.,1.));
+  vec2 t1=s-sp,t2=sn-s;
+  if(dot(t1,t1)<1e-8)t1=t2; if(dot(t2,t2)<1e-8)t2=t1; if(dot(t1,t1)<1e-8){t1=vec2(1.,0.);t2=t1;}
+  t1=normalize(t1);t2=normalize(t2);vec2 tg=t1+t2;
+  if(dot(tg,tg)<1e-6)tg=t1; else tg=normalize(tg);
+  vec2 n=vec2(-tg.y,tg.x);float ml=1./max(dot(n,vec2(-t1.y,t1.x)),.5);
+  float hw=u_w*.5;
+  gl_Position=vec4((s+n*ml*(a_side*hw+u_off))/(u_res*.5)*c.w,0.,c.w);v_s=a_side*hw;v_x=a_x*u_dpr;v_len=a_len*u_dpr; // along the train, in device px
+}`;
+const TR_FS = `precision highp float;varying float v_s,v_x,v_len;
+uniform float u_w,u_tw,u_rad,u_gap,u_ring,u_a;
 float rbox(vec2 q,vec2 h,float r){vec2 d=abs(q)-h+r;return length(max(d,0.))+min(max(d.x,d.y),0.)-r;}
 float ell(vec2 q,vec2 r){float k=length(q/r);vec2 g=q/(r*r)/max(k,1e-4);return (k-1.)/max(length(g),1e-4);}
-float bullet(vec2 q,float L,float W,float r){float hl=L*.5,hw=W*.5,nose=min(W*1.6,L*.4),x0=hl-nose;
-  return min(rbox(q-vec2((x0-hl)*.5,0.),vec2((x0+hl)*.5,hw),r),ell(q-vec2(x0,0.),vec2(nose,hw)));}
-void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);
-  vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
-  if(v_kind>.5&&v_kind<1.5){vec2 h=u_pl*.5;float d=rbox(q,h,min(h.y,u_rad+(u_pl.y-u_tw)*.5));
-    gl_FragColor=vec4(v_col.rgb,1.)*clamp(.5-d,0.,1.)*v_col.a;return;}
-  float L=u_tl*v_sz,W=u_tw*v_sz,d=mix(length(q)-W*.85,bullet(q,L,W,u_rad*v_sz),u_icon);
-  if(v_kind>1.5){float a=clamp(1.-abs(d-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
-  // the glow fades out before the sprite's edge, so its square never shows
-  float edge=(1.-max(abs(p.x),abs(p.y)))*v_px*.5;
+void main(){float L=v_len,W=u_tw,hl=L*.5,hw=W*.5,nose=min(W*1.6,L*.4),x0=hl-nose;vec2 q=vec2(v_x-hl,v_s);
+  float d=min(rbox(q-vec2((x0-hl)*.5,0.),vec2((x0+hl)*.5,hw),min(u_rad,hw)),ell(q-vec2(x0,0.),vec2(max(nose,.01),hw)));
+  float pad=(u_w-W)*.5,edge=min(u_w*.5-abs(v_s),min(v_x+pad,L+pad-v_x));
+  if(u_ring>.5){gl_FragColor=vec4(1.)*clamp(1.-abs(d-u_gap*2.5)/(u_gap*.9),0.,1.)*u_a;return;}
   float glow=.26*exp(-max(d,0.)/(W*.38))*smoothstep(0.,W*.9,edge);
-  gl_FragColor=vec4(v_col.rgb,1.)*max(clamp(.5-d,0.,1.),glow);
+  gl_FragColor=vec4(.957,.957,.957,1.)*max(clamp(.5-d,0.,1.),glow)*u_a;
 }`;
 
 class Buf { // growable Float32 / Uint16 writer
@@ -458,20 +479,20 @@ function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercat
   for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
 }
 
-// One unit, u, the width of a train, sets everything (CSS px). The track is two trains wide with a gap of g
-// between them; corners are u * .3; platforms add u * .45 all round, so their corners are concentric with a train's.
+// One unit, u, the width of a train, sets everything (CSS px). The track is two trains wide with a gap of g between
+// them. A station is a dot that takes the whole track and a little more, so a train arriving disappears into it.
+const ICON_Z = 12.4; // zoomed in from here trains are drawn as trains; zoomed out, as dots. Never anything between.
 function sizes(z) {
   const u = Math.max(3, Math.min(8, 2.6 + (z - 10) * 1.2)), g = Math.max(.75, u * .12);
-  const band = 2 * u + g, lane = (u + g) / 2, tl = u * 4.6;
-  // zoomed out a platform is round; from about zoom 12 it stretches to hold a whole train
-  const m = u * .45, pw = band + 2 * m, pl = pw + (tl + 2 * m + 2 * g - pw) * Math.max(0, Math.min(1, (z - 11.4) / 1.4));
-  // zoomed out a train is a dot, to save space; between zoom 12 and 12.8 it grows into the bullet
-  const icon = Math.max(0, Math.min(1, (z - 12) / .8));
-  return { u, tw: u, tl, g, band, lane, rad: u * .3, pw, pl, st: Math.max(pw, pl * .55), icon };
+  const band = 2 * u + g, lane = (u + g) / 2, tl = u * 4.6, st = band + u * .9;
+  return { u, tw: u, tl, g, band, lane, rad: u * .3, st };
 }
+// CSS px per metre on the map at zoom z (512 px world tiles; Delhi's latitude)
+const pxPerM = z => 512 * 2 ** z / (40075016.7 * Math.cos(28.6 * Math.PI / 180));
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
-    headV: new Buf(Float32Array), fxV: new Buf(Float32Array),
+    headV: new Buf(Float32Array), fxV: new Buf(Float32Array), occV: new Buf(Float32Array),
+    trV: new Buf(Float32Array), trI: new Buf(Uint16Array), pickV: new Buf(Float32Array), pickI: new Buf(Uint16Array), icon: 0, iconT: 0, lastT: 0,
     staticDirty: true, gl: null };
   g.init = gl => {
     g.gl = gl;
@@ -484,13 +505,14 @@ function makeGpu() {
       return { p, u, attrs }; };
     g.line = prog(LINE_VS, LINE_FS, ['a_pos', 'a_prev', 'a_next', 'a_side', 'a_col']);
     g.pt = prog(PT_VS, PT_FS, ['a_pos', 'a_dir', 'a_col', 'a_size', 'a_kind']);
-    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'headV', 'fxV']) g.b[k] = gl.createBuffer();
+    g.tr = prog(TR_VS, TR_FS, ['a_pos', 'a_prev', 'a_next', 'a_side', 'a_x', 'a_len']);
+    g.b = {}; for (const k of ['lineV', 'lineI', 'stV', 'headV', 'fxV', 'occV', 'trV', 'trI', 'pickV', 'pickI']) g.b[k] = gl.createBuffer();
     g.isGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
     g.vao = g.isGL2 ? null : gl.getExtension('OES_vertex_array_object');
     g.minmax = g.isGL2 ? gl.MAX : (gl.getExtension('EXT_blend_minmax') || {}).MAX_EXT;
     g.staticDirty = true;
   };
-  const LINE_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 4]], PT_LAYOUT = [[0, 2], [2, 2], [4, 4], [8, 1], [9, 1]];
+  const LINE_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 4]], TR_LAYOUT = [[0, 2], [2, 2], [4, 2], [6, 1], [7, 1], [8, 1]], PT_LAYOUT = [[0, 2], [2, 2], [4, 4], [8, 1], [9, 1]];
   function bindAttrs(gl, layout, stride) {
     layout.forEach(([off, size], i) => { gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, size, gl.FLOAT, false, stride * 4, off * 4); });
   }
@@ -514,16 +536,31 @@ function makeGpu() {
     if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0);
       gl.drawElements(gl.TRIANGLES, g.lineI.n, gl.UNSIGNED_SHORT, 0); }
     unbind(gl, 5);
-    // platforms sit on the track, under the trains
-    const P = g.pt; gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
-    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); 
-    gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_rad, S.rad * dpr); gl.uniform1f(P.u.u_icon, S.icon); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr); 
-    const pts = (buf, data, scale, o, pad, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
+    // Trains snap between a dot and a train at ICON_Z (with a little give, so a pinch resting on the line doesn't
+    // flicker), and cross-fade in 200 ms: only opacity changes, never the shape.
+    const now = performance.now(), dt = Math.min(100, now - (g.lastT || now)); g.lastT = now;
+    if (z > ICON_Z + .1) g.iconT = 1; else if (z < ICON_Z - .1) g.iconT = 0;
+    g.icon = RM.matches ? g.iconT : g.icon + Math.sign(g.iconT - g.icon) * Math.min(Math.abs(g.iconT - g.icon), dt / 200);
+    const fade = g.icon * g.icon * (3 - 2 * g.icon);
+    const P = g.pt, T = g.tr, pts = (buf, data, scale, o, pad, kind) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
-    pts(g.b.stV, g.stV, S.pl + 2, 0, 0);
-    // trains, then the selection outline
-    pts(g.b.headV, g.headV, 1, off, tw * 1.4);
-    pts(g.b.fxV, g.fxV, 1, off, 6 * dpr);
+    const strip = (V, I, ring, a) => { if (!I.n || a <= 0) return; gl.useProgram(T.p); gl.uniformMatrix4fv(T.u.u_m, false, M); gl.uniform2fv(T.u.u_res, res);
+      upload(gl, gl.ARRAY_BUFFER, ring ? g.b.pickV : g.b.trV, V.view(), gl.DYNAMIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, ring ? g.b.pickI : g.b.trI, I.view(), gl.DYNAMIC_DRAW);
+      bindAttrs(gl, TR_LAYOUT, 9); gl.uniform1f(T.u.u_w, tw * (ring ? 1.9 : 3.4)); gl.uniform1f(T.u.u_tw, tw); gl.uniform1f(T.u.u_off, off); gl.uniform1f(T.u.u_dpr, dpr);
+      gl.uniform1f(T.u.u_rad, S.rad * dpr); gl.uniform1f(T.u.u_gap, S.g * dpr); gl.uniform1f(T.u.u_ring, ring ? 1 : 0); gl.uniform1f(T.u.u_a, a);
+      gl.drawElements(gl.TRIANGLES, I.n, gl.UNSIGNED_SHORT, 0); unbind(gl, 6); };
+    const ptSetup = () => { gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
+      gl.uniform1f(P.u.u_tl, tw * 1.7); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_st, S.st * dpr); };
+    // trains first, then the station dots over them, so a train arriving slides in under its station's dot
+    strip(g.trV, g.trI, false, fade);
+    ptSetup();
+    if (fade < 1) { gl.uniform1f(P.u.u_fade, 1 - fade); pts(g.b.headV, g.headV, 1, off, tw * 1.4); }
+    gl.uniform1f(P.u.u_fade, 1);
+    pts(g.b.stV, g.stV, S.st + 2, 0, 0);
+    pts(g.b.occV, g.occV, S.st + 2, 0, 0);
+    // the selection outline, on top of everything
+    if (fade > 0) { unbind(gl, 5); strip(g.pickV, g.pickI, true, fade * (g.pickA || 1)); ptSetup(); }
+    if (fade < 1) { gl.uniform1f(P.u.u_fade, 1 - fade); pts(g.b.fxV, g.fxV, 1, off, 6 * dpr); gl.uniform1f(P.u.u_fade, 1); }
     unbind(gl, 5);
     gl.bindBuffer(gl.ARRAY_BUFFER, null); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
   };
@@ -531,7 +568,7 @@ function makeGpu() {
 }
 
 /* ---------- scene building ---------- */
-let stations = [], labelList = []; // stations on selected lines, grouped by name
+let stations = [], labelList = [], stationByName = new Map(); // stations on selected lines, grouped by name
 function buildStatic() {
   const g = gpu; g.lineV.reset(); g.lineI.reset(); g.stV.reset();
   const ids = new Set(R.map(r => r.id));
@@ -552,12 +589,13 @@ function buildStatic() {
     if (sel.has(r.line)) { s.on.add(r.line); if (!s.m) s.m = merc(D.stops[p[0]][1], D.stops[p[0]][2]); if (j === 0 || j === r.pat.length - 1) s.term = true;
       const k = name + '|' + r.line; if (!plat.has(k)) plat.set(k, { s, r, d: p[3] }); }
   });
-  stations = [...byName.values()].filter(s => s.on.size);
-  // one platform per station per line, on that line's own track and turned to follow it
+  stations = [...byName.values()].filter(s => s.on.size); stationByName = byName;
+  // one dot per station per line, on that line's own track; white at an interchange, as on Maptro's first map
   for (const { s, r, d } of plat.values()) {
-    const [x, y] = posAt(r, d), [tx, ty] = headingAt(r, d), c = tone[r.line].platform;
-    g.stV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, 1, 1);
+    const [x, y] = posAt(r, d), c = s.lines.size > 1 ? INK : tone[r.line].platform;
+    g.stV.push(x - ORIGIN[0], y - ORIGIN[1], 0, 0, c[0], c[1], c[2], 1, 1, 1);
   }
+  for (const s of stations) s.ic = s.lines.size > 1;
   for (const s of stations) {
     const ic = s.lines.size > 1;
     s.pri = (s.term ? 2 : 0) + (ic ? 1 : 0);
@@ -566,17 +604,59 @@ function buildStatic() {
   labelList = stations.slice().sort((a, b) => b.pri - a.pri);
   g.staticDirty = true; labelsDirty = true;
 }
+// A train's visible stretch of track, in metres along its route [tail, nose], and how far it has gone into a station
+// (0 out, 1 in). Between stations it is a train's length centred on its scheduled position. Arriving, the nose stops
+// at the station's centre and the tail closes up behind it, so the train slides into the station's dot; leaving, the
+// reverse. `half` is half a train's length in metres at the current zoom.
+function trainSpan(o, half) {
+  const p = o.r.pat;
+  if (o.dwell) return { tail: o.d, nose: o.d, sd: o.d, inn: 1 };
+  const a = p[o.i][3], b = p[o.i + 1][3], h = Math.min(half, (b - a) * .45), d = o.d;
+  let tail = d - h, nose = d + h, sd = null, inn = 0;
+  if (nose > b) { nose = b; tail = b - 2 * (b - d); sd = b; inn = 1 - (b - d) / h; }
+  if (tail < a) { tail = a; nose = Math.min(nose, a + 2 * (d - a)); sd = a; inn = Math.max(inn, 1 - (d - a) / h); }
+  return { tail, nose, sd, inn: Math.max(0, Math.min(1, inn)) };
+}
+// Points of route r from distance d0 to d1 (metres), relative to ORIGIN, each with its distance.
+function routeSlice(r, d0, d1) {
+  const out = [], a = posAt(r, d0); out.push([a[0] - ORIGIN[0], a[1] - ORIGIN[1], d0]);
+  for (let i = lowerBound(r.md, d0 + 1e-6); i < r.md.length && r.md[i] < d1; i++) out.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1], r.md[i]]);
+  const b = posAt(r, d1); out.push([b[0] - ORIGIN[0], b[1] - ORIGIN[1], d1]);
+  return out;
+}
+function ribbon(V, I, r, tail, nose, ppm, padM) {
+  const end = r.md[r.md.length - 1], pts = routeSlice(r, Math.max(r.md[0], tail - padM), Math.min(end, nose + padM));
+  const n = pts.length, base = V.n / 9, len = (nose - tail) * ppm; if (n < 2 || base + n * 2 > 65000) return;
+  for (let i = 0; i < n; i++) {
+    const q = pts[i], a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)], x = (q[2] - tail) * ppm;
+    V.push(q[0], q[1], a[0], a[1], b[0], b[1], -1, x, len); V.push(q[0], q[1], a[0], a[1], b[0], b[1], 1, x, len);
+  }
+  for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+}
 function buildDynamic(t) {
-  const g = gpu; g.headV.reset(); g.fxV.reset();
+  const g = gpu; g.headV.reset(); g.fxV.reset(); g.occV.reset(); g.trV.reset(); g.trI.reset(); g.pickV.reset(); g.pickI.reset();
   trains = trainsAt(act, t, null);
+  const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
+  const lit = new Map(); // station dots with a train in them, and how far in
   for (const o of trains) {
     const [x, y] = o.pos, [tx, ty] = headingAt(o.r, o.d);
-    const isPick = picked && picked.r === o.r && picked.s0 === o.s0, c = INK; // every train is the same white object; the line under it says which line
-    g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, isPick ? 1.18 : 1, 0);
+    const isPick = picked && picked.r === o.r && picked.s0 === o.s0;
+    const sp = trainSpan(o, half);
+    if (sp.nose - sp.tail > .5) ribbon(g.trV, g.trI, o.r, sp.tail, sp.nose, ppm, padM);
+    g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, INK[0], INK[1], INK[2], 1, 1, 0);
+    if (sp.inn > 0) { const k = o.r.line + '|' + sp.sd + '|' + o.r.id, q = lit.get(k); if (!q || q.inn < sp.inn) lit.set(k, { o, d: sp.sd, inn: sp.inn }); }
     if (isPick) { picked.o = o; const a = RM.matches ? 1 : .55 + .45 * Math.sin(performance.now() / 260);
-      g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 1.18, 2); }
+      if (sp.nose - sp.tail > .5) ribbon(g.pickV, g.pickI, o.r, sp.tail, sp.nose, ppm, padM * .6);
+      g.pickA = a; g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 1, 2); }
+  }
+  // the train becomes the light in its station's dot: white in a line's dot, the line's colour in an interchange's
+  for (const { o, d, inn } of lit.values()) {
+    const s = stopAt(o.r, d), ic = s && s.ic, c = ic ? rgb[o.r.line] : INK, m = posAt(o.r, d);
+    g.occV.push(m[0] - ORIGIN[0], m[1] - ORIGIN[1], 0, 0, c[0], c[1], c[2], 1, inn, 3);
   }
 }
+// The station (by name) where route r stops at distance d.
+function stopAt(r, d) { const p = r.pat.find(q => q[3] === d); return p && stationByName.get(D.stops[p[0]][0]); }
 
 /* ---------- cameras ---------- */
 function mapLibreCamera(ml) {
@@ -703,8 +783,8 @@ function drawLabels() {
       const box = [bx - 2, by - 1, bx + w + 2, by + h + 1];
       if (box[0] < 2 || box[2] > W - 2 || hit(box) || coversDot(box, li)) continue;
       placed.push(box);
-      lx.strokeStyle = 'rgba(0,0,0,.92)'; lx.lineWidth = 3.5; lx.strokeText(s.name, bx, by + h / 2);
-      lx.fillStyle = big ? '#ffffff' : '#bdbdbd'; lx.fillText(s.name, bx, by + h / 2);
+      // plain text, no halo: every name in --ink; terminals stand out by weight and size alone
+      lx.fillStyle = '#f4f4f4'; lx.fillText(s.name, bx, by + h / 2);
       break;
     }
   }
