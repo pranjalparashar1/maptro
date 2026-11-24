@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Maptro: the Yellow and Blue lines crossing at a white interchange, on true black. -->
+  <rect width="512" height="512" fill="#000"/>
+  <path d="M232 -20 C232 120 280 190 280 256 S232 392 232 532" fill="none" stroke="#ffd60a" stroke-width="44"/>
+  <path d="M-20 300 C120 300 190 256 256 256 S392 212 532 212" fill="none" stroke="#3388ff" stroke-width="44"/>
+  <circle cx="268" cy="256" r="40" fill="#f4f4f4"/>
+</svg>

@@ -27,6 +27,8 @@ Then serve the folder (`python3 -m http.server`) and open index.html.
 - It opens on the Airport Express. Pick lines from the dropdown; only those lines, their stations and their trains are drawn. Station names appear by zoom level and never overlap. The choice is remembered in the browser.
 - Trains glide every frame (`requestAnimationFrame`, so 120 Hz on ProMotion phones) drawn as white dots when zoomed out and as white bullets with a faint glow when zoomed in, never anything between. A zoomed-in train is laid along the track itself, so it bends through curves. Trains slide into a station's dot when they arrive and out of it when they leave. The track is a flat band in the line's full colour, two trains wide, and each direction keeps to its own (left-hand) side. With one line chosen, a direction dropdown shows both directions or just one, and a note says how many trains are active. Tap a train for its next stop and Follow it; tap a station for its next departures. When no trains run, Skip to 8 am starts a simulation, and only then can the clock run at 1×, 10× or 60×. The clock reads "Now", never "Live"; if the phone's clock is more than 2 minutes off the server's, the server's time is used. The Disclaimer names the timetable's sources and dates and which day's timetable is running.
 
+- Installable and offline (1.11): `manifest.webmanifest` and `sw.js`. Once opened, Maptro opens again with no signal, from the saved page, timetable and MapLibre; with a signal it fetches the newest first. A text view lists each chosen line's stations and next trains, for screen readers and keyboards, and station cards show line codes (Y, B, AE…) so colour is never the only cue. What changed in each version: [CHANGELOG.md](CHANGELOG.md).
+
 ## Design
 How it looks, moves and behaves, and the checklist for any change: [DESIGN.md](DESIGN.md).
 
@@ -39,3 +41,5 @@ They load the `/*<core>*/` block of index.html (all the timetable and position l
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 These cover the two data-check scripts, offline, against fixtures in `tests/fixtures/`.
+
+`scripts/dev/browser-check.cjs` opens the page in a phone-sized Chromium at a fixed time, with a stand-in basemap, and checks that it draws (reading pixels), that the line codes and the text view work, and that it opens offline. `.github/workflows/test.yml` runs all three on every push and pull request.

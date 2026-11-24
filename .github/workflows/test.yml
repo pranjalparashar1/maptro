@@ -1,0 +1,51 @@
+# On every push and pull request: the timetable and position tests, the data-check script tests, and the browser
+# check (scripts/dev/browser-check.cjs), which opens Maptro in a phone-sized Chromium, checks it draws, that the
+# text view and line codes work, and that it opens offline. Its screenshots are kept as a run artifact.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Timetable and position tests
+        run: node --test tests/*.test.mjs
+
+      - name: Data-check script tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Install Chromium and the stand-in map's packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/dev" && cd "$RUNNER_TEMP/dev"
+          npm init -y > /dev/null
+          npm i --no-audit --no-fund playwright@1.49.1 maplibre-gl@4.7.1 geojson-vt@3 vt-pbf@3
+          npx playwright install --with-deps chromium
+
+      - name: Browser check
+        run: NODE_PATH="$RUNNER_TEMP/dev/node_modules" node scripts/dev/browser-check.cjs . browser-check
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-check-screenshots
+          path: browser-check/
+          if-no-files-found: ignore

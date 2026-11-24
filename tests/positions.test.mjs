@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,runAt,profile,ACCEL,DECEL,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,serviceOn,plainService,firstDeparture,skipTarget,Buf,polyline,ribbon};')();
+const load = () => new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,runAt,profile,ACCEL,DECEL,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound,clockSkew,SKEW_MIN,provenance,serviceOn,plainService,firstDeparture,skipTarget,Buf,polyline,ribbon,lineStations,nextByDest};')();
 const core = load();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
@@ -365,4 +365,33 @@ test('data.json says where every special day comes from, and stays small', () =>
   const svc = JSON.parse(readFileSync(new URL('../scripts/service_days.json', import.meta.url), 'utf8'));
   for (const [k, d] of Object.entries(svc.special_days)) if (!k.startsWith('_')) assert.ok(d.source && d.name && d.timetable, k);
   assert.ok(readFileSync(new URL('../data.json', import.meta.url)).length < 250000);
+});
+
+test('text view: each line lists every one of its stations once, the main line in running order', () => {
+  for (const line of new Set(R.map(r => r.line))) {
+    const st = core.lineStations(D, line), names = st.map(s => s.name);
+    const all = new Set(R.filter(r => r.line === line).flatMap(r => r.pat.map(p => D.stops[p[0]][0])));
+    assert.equal(names.length, all.size, line);
+    assert.deepEqual(new Set(names), all, line);
+    const main = [...new Set(R.filter(r => r.line === line).sort((a, b) => b.pat.length - a.pat.length)[0].pat.map(p => D.stops[p[0]][0]))];
+    const at = names.indexOf(main[0]);
+    assert.deepEqual(names.slice(at, at + main.length), main, line + ': the longest route reads in order');
+  }
+  // an extension past the end goes on that end: Yashobhoomi sits beside Dwarka Sector 21, not after New Delhi
+  const ae = core.lineStations(D, 'ORANGE/AIRPORT').map(s => s.name), yb = ae.findIndex(n => /Yashobhoomi/.test(n)), dw = ae.findIndex(n => /Dwarka Sector - 21/.test(n));
+  assert.ok(yb >= 0 && dw >= 0 && Math.abs(yb - dw) === 1, ae.join(', '));
+});
+
+test('text view: next train to each destination agrees with departures()', () => {
+  core.useDay(D, 'wkd');
+  const rs = R.filter(r => r.line === 'YELLOW'), st = core.lineStations(D, 'YELLOW').find(s => s.name === 'Rajiv Chowk');
+  const t = H(9), nx = core.nextByDest(D, rs, st.ids, t);
+  assert.ok(nx.length >= 2, 'both ways from Rajiv Chowk');
+  assert.equal(new Set(nx.map(d => d.to)).size, nx.length, 'one per destination');
+  for (const d of nx) {
+    assert.ok(d.time >= t && d.time - t < 10 * 60, `${d.to} within 10 min at 9 am`);
+    const first = core.departures(rs, st.ids, t, null, Infinity).find(q => D.stops[q.to][0] === d.to);
+    assert.equal(first.time, d.time, d.to);
+  }
+  for (let i = 1; i < nx.length; i++) assert.ok(nx[i].time >= nx[i - 1].time);
 });
