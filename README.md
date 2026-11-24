@@ -5,7 +5,8 @@ Every Delhi Metro train drawn where DMRC's published timetable says it should be
 **Live page:** https://pranjalparashar1.github.io/maptro/
 
 ## Data
-- DMRC static GTFS from Delhi's Open Transit Data portal (otd.delhi.gov.in): 262 stations, 36 routes, last updated Aug 2023, calendar expired 31 Dec 2025. The map ignores the expiry and runs the weekday timetable every day.
+- DMRC static GTFS from Delhi's Open Transit Data portal (otd.delhi.gov.in): 262 stations, 36 routes, last updated Aug 2023, calendar expired 31 Dec 2025. The map ignores the expiry. Its run times and service hours are still used.
+- Departure times come from DMRC's published train frequencies (delhimetrorail.com/train-frequency, as on 31 Aug 2026), in `scripts/frequency.json`, with separate weekday, Saturday and Sunday timetables. Branch trains alternate on shared track, and trains turn back where DMRC's section figures say they do (Blue at Dwarka, Green at Mundka, Yellow at Vishwavidyalaya). The first and last trains and the peak hours (08:00–12:00, 17:00–21:00) are the 2023 feed's, since DMRC's table doesn't give them. Rapid Metro and Aqua keep the feed's weekday times every day. See `scripts/headways.py`; the build prints a check of every section against DMRC's figure.
 - Running times are scaled per line to Google Maps end-to-end ride times (24 Nov 2026, 11:00), from `scripts/calibration.json`. The build prints each change.
 - Missing from the feed: Airport Line to Yashobhoomi Dwarka Sec 25, Magenta to Krishna Park Extension, Magenta Deepali Chowk–Majlis Park and Pink Majlis Park–Maujpur (Mar 2026). Green Line trains' stop at Punjabi Bagh West (opened Mar 2022) is added by the build.
 

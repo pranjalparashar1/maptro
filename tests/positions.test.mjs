@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const src = html.split('/*<core>*/')[1].split('/*</core>*/')[0];
-const core = new Function(src + '\nreturn {DAY,nowIST,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound};')();
+const core = new Function(src + '\nreturn {DAY,nowIST,dayKey,useDay,merc,unmerc,prepare,stateAt,posAt,headingAt,directions,trainsAt,trailPoints,departures,lowerBound};')();
 const D = core.prepare(JSON.parse(readFileSync(new URL('../data.json', import.meta.url), 'utf8')));
 const R = D.routes;
 const H = h => h * 3600;
@@ -126,5 +126,37 @@ test('heading is a unit vector pointing the way the train moves', () => {
     const end = o.r.md[o.r.md.length - 1];
     if (o.d > 200 && o.d < end - 200) { const a = core.posAt(o.r, o.d - 100), b = core.posAt(o.r, o.d + 100);
       assert.ok(hx * (b[0] - a[0]) + hy * (b[1] - a[1]) > 0, `${o.r.id} heading backwards`); }
+  }
+});
+
+test('the timetable follows the India service day, turning over at 3 am', () => {
+  assert.equal(core.dayKey(Date.UTC(2026, 10, 24, 6, 0)), 'wkd'); // Tue 11:30 IST
+  assert.equal(core.dayKey(Date.UTC(2026, 10, 28, 6, 0)), 'sat');
+  assert.equal(core.dayKey(Date.UTC(2026, 10, 29, 6, 0)), 'sun');
+  assert.equal(core.dayKey(Date.UTC(2026, 10, 29, 20, 0)), 'sun'); // Mon 01:30 IST is still Sunday's service
+  assert.equal(core.dayKey(Date.UTC(2026, 10, 29, 22, 0)), 'wkd'); // Mon 03:30 IST
+});
+
+test('Sundays run fewer trains than weekdays, and switching back restores the weekday', () => {
+  const wkd = core.trainsAt(R, H(9.5), null).length;
+  core.useDay(D, 'sun'); const sun = core.trainsAt(R, H(9.5), null).length;
+  core.useDay(D, 'wkd');
+  assert.ok(sun < wkd * 0.8, `${sun} vs ${wkd}`);
+  assert.equal(core.trainsAt(R, H(9.5), null).length, wkd);
+});
+
+test('branch trains alternate on shared track instead of doubling up', () => {
+  // DMRC, 31 Aug 2026: Dwarka-Yamuna Bank every 2:51 at weekday peak; Ashok Park-Mundka every 4:10
+  for (const [line, stop, want] of [['BLUE', 'Rajiv Chowk', 171], ['GREEN', 'Punjabi Bagh', 250]]) {
+    const ids = new Set(Object.entries(D.stops).filter(([, s]) => s[0] === stop).map(([k]) => +k));
+    for (const dir of [0, 1]) {
+      const ts = [];
+      for (const r of R) if (r.line === line && r.dir === dir) for (const p of r.pat) if (ids.has(p[0]))
+        for (const s of r.starts) { const x = s + p[2]; if (x >= H(9.5) && x < H(11.5)) ts.push(x); }
+      ts.sort((a, b) => a - b);
+      const gaps = ts.slice(1).map((x, i) => x - ts[i]);
+      assert.ok(gaps.length > 20 && Math.min(...gaps) > 60, `${line} ${dir}: min gap ${Math.min(...gaps)}`);
+      assert.ok(Math.abs(gaps.reduce((a, b) => a + b) / gaps.length - want) < 5, `${line} ${dir} mean gap`);
+    }
   }
 });

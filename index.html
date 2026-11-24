@@ -206,10 +206,17 @@ function merc(lon, lat) {
 function unmerc(x, y) {
   return [x * 360 - 180, 360 / Math.PI * Math.atan(Math.exp((1 - 2 * y) * Math.PI)) - 90];
 }
-// Adds sorted starts, duration and Mercator copies of each shape to the routes in data.json.
-function prepare(D) {
+// Which timetable runs: 'wkd', 'sat' or 'sun', by the India date. The service day turns over at 03:00, when no
+// trains run, so a train that left before midnight finishes on the timetable it started on.
+const dayKey = (ms = Date.now()) => { const w = new Date(ms + (19800 - 3 * 3600) * 1000).getUTCDay(); return w === 0 ? 'sun' : w === 6 ? 'sat' : 'wkd'; };
+// Points every route's starts at that day's departures (data.json routes may carry sat and sun beside starts).
+function useDay(D, day) { for (const r of D.routes) r.starts = r.byDay[day]; D.day = day; return D; }
+// Adds sorted starts for each day, duration and Mercator copies of each shape to the routes in data.json.
+function prepare(D, day = 'wkd') {
+  const sort = a => [...a].sort((x, y) => x - y);
   for (const r of D.routes) {
-    r.starts = [...r.starts].sort((a, b) => a - b);
+    r.byDay = { wkd: sort(r.starts), sat: sort(r.sat || r.starts), sun: sort(r.sun || r.starts) };
+    r.starts = r.byDay[day];
     r.dur = r.pat[r.pat.length - 1][1];
     const n = r.shape.length;
     r.mx = new Float64Array(n); r.my = new Float64Array(n); r.md = new Float64Array(n);
@@ -218,6 +225,7 @@ function prepare(D) {
       r.mx[i] = m[0]; r.my[i] = m[1]; r.md[i] = d;
     }
   }
+  D.day = day;
   return D;
 }
 // Where a train is `e` seconds after leaving its first stop: shape distance, pattern index, dwelling or not.
@@ -252,9 +260,12 @@ function headingAt(r, d, span = 45) {
 }
 // Splits each line's routes into two directions, A to B (dir 0) and B to A (dir 1), and names the ends.
 // Routes ending in _R run the other way to their pair. The estimated Airport and Magenta extensions were
-// built leaving the existing terminal, which is the opposite sense to the rest of their line, so they flip.
-const DIR_FLIP = new Set(['E_airport', 'E_magenta_kpe']);
-const DIR_ENDS = { MAGENTA: ['Majlis Park', 'Botanical Garden'] }; // a horseshoe: the farthest-apart rule picks the wrong end
+// built leaving the existing terminal, which is the opposite sense to the rest of their line, so they flip. So does the
+// Pink ring's new northern arc: E_pink_ring_R carries on round from the feed's P_MS direction, so it's dir 0.
+const DIR_FLIP = new Set(['E_airport', 'E_magenta_kpe', 'E_pink_ring']);
+// Magenta is a horseshoe and Pink a ring, so the farthest-apart rule picks the wrong ends; Blue's Dwarka turn-backs
+// would otherwise beat Dwarka Sector 21.
+const DIR_ENDS = { MAGENTA: ['Majlis Park', 'Botanical Garden'], PINK: ['Majlis Park', 'Shiv Vihar'], BLUE: ['Dwarka Sector - 21', 'Noida Electronic City'] };
 function directions(D) {
   const out = {}, nm = id => D.stops[id][0];
   for (const r of D.routes) { const rev = r.id.endsWith('_R'), base = rev ? r.id.slice(0, -2) : r.id; r.dir = (rev ? 1 : 0) ^ (DIR_FLIP.has(base) ? 1 : 0); }
@@ -662,6 +673,7 @@ function ribbon(V, I, r, tail, nose, ppm, padM) {
 }
 function buildDynamic(t) {
   const g = gpu; g.headV.reset(); g.fxV.reset(); g.occV.reset(); g.trV.reset(); g.trI.reset(); g.pickV.reset(); g.pickI.reset();
+  const day = dayKey(); if (D.day !== day) useDay(D, day); // Saturday and Sunday run their own timetables
   trains = trainsAt(act, t, null);
   const z = cam.zoom(), S = sizes(z), ppm = pxPerM(z), half = S.tl / 2 / ppm, padM = S.u * 1.6 / ppm;
   const lit = new Map(); // station dots with a train in them, and how far in
@@ -988,7 +1000,7 @@ function loadScript(src, ms) {
 async function getMapLibre() { for (const u of CDN) { try { await loadScript(u, 6000); if (window.maplibregl) return window.maplibregl; } catch (e) {} } return null; }
 
 Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async ([data, ml]) => {
-  D = prepare(data); R = D.routes;
+  D = prepare(data, dayKey()); R = D.routes;
   lines = ORDER.filter(l => R.some(r => r.line === l)).concat([...new Set(R.map(r => r.line))].filter(l => !ORDER.includes(l)));
   for (const l of lines) { color[l] = SHOW[l] || D.colors[l] || '#ffffff'; rgb[l] = hexRgb(color[l]); tone[l] = { track: shade(rgb[l], TONES.track), platform: shade(rgb[l], TONES.platform) }; }
   let saved = null; try { saved = JSON.parse(localStorage.getItem(LINES_KEY)); } catch (e) {}

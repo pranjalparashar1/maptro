@@ -274,6 +274,12 @@ if os.path.exists(P4):
     import phase4
     est_routes, est_stops, est_meta = phase4.build(json.load(open(P4)), stops, routes, sys.modules[__name__])
     routes += est_routes; stops.update(est_stops); meta["estimated"] = est_meta
+FREQ = os.path.join(HERE, "frequency.json")
+if os.path.exists(FREQ) and os.path.exists(P4):
+    import headways
+    fcfg = json.load(open(FREQ))
+    routes = headways.apply(routes, stops, fcfg, json.load(open(P4)), phase4)
+    meta["frequency"] = dict(source=fcfg["source"], peak_bands=fcfg["peak_bands"], peak_bands_source=fcfg["peak_bands_source"])
 
 json.dump(dict(colors=col, routes=routes, stops=stops, meta=meta), open(OUT, 'w'), separators=(',', ':'), ensure_ascii=False)
 print(os.path.getsize(OUT), len(routes), sum(len(x['shape']) for x in routes))
