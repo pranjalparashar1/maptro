@@ -328,7 +328,10 @@ const NAMES = {RED:'Red',YELLOW:'Yellow',BLUE:'Blue',GREEN:'Green',VIOLET:'Viole
 const SHOW = {BLUE:'#2f86f0',VIOLET:'#a05bd0',MAGENTA:'#e0329f',GRAY:'#a7adb5',RAPID:'#5aa0ec',GREEN:'#33b34f'};
 const DEFAULT = ['ORANGE/AIRPORT'];
 const LINES_KEY = 'maptro-lines-v2'; // v2: the default became the Airport Express, so earlier saved picks start fresh
-const INK = [.957, .957, .957]; // --ink: trains are drawn in it, so they stand out from any line
+const INK = [.957, .957, .957]; // --ink, the picked train
+// One light, three tones of each line's colour: the track at rest, its platforms a step up, the trains at full strength.
+// Tones change lightness in OKLab and keep the hue, so a darker yellow stays yellow rather than going grey.
+const TONES = { track: .8, platform: 1 };
 const SPEEDS = [1, 10, 60]; // simulation only; live time always runs at 1x
 // Basemap: OpenStreetMap data as OpenFreeMap vector tiles (free, no key, made for hotlinking), drawn in Maptro's own
 // true-black style. No symbol layers, so no fonts or sprites load; station names are ours. Tokens in DESIGN.md.
@@ -344,15 +347,15 @@ const BLACK_STYLE = { version: 8,
     { id: 'building', type: 'fill', source: 'osm', 'source-layer': 'building', minzoom: 14, paint: { 'fill-color': '#0c0c0c' } },
     { id: 'road-minor', type: 'line', source: 'osm', 'source-layer': 'transportation', minzoom: 12,
       filter: ['match', ['get', 'class'], ['minor', 'service', 'tertiary'], true, false],
-      paint: { 'line-color': '#121212', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 12, .5, 16, 5] } },
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#121212', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 12, .5, 16, 5] } },
     { id: 'road-major', type: 'line', source: 'osm', 'source-layer': 'transportation',
       filter: ['match', ['get', 'class'], ['motorway', 'trunk', 'primary', 'secondary'], true, false],
-      paint: { 'line-color': '#1d1d1d', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 9, .4, 16, 8] } },
+      layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#1d1d1d', 'line-width': ['interpolate', ['exponential', 1.5], ['zoom'], 9, .4, 16, 8] } },
   ] };
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const CDN = ['https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js','https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'];
 
-let D, R, lines = [], sel = new Set(), color = {}, rgb = {};
+let D, R, lines = [], sel = new Set(), color = {}, rgb = {}, tone = {};
 let sim = false, speed = 10, simT = 0, lastReal = performance.now();
 let dirs = {}, dirSel = null, act = [], popPending = true; // dirSel: null for both directions, else 0 (A to B) or 1 (B to A)
 let cam, gpu, trains = [], picked = null, follow = false, labelsDirty = true, selDirty = true, refit = false;
@@ -370,6 +373,16 @@ function goLive() { sim = false; lastReal = performance.now(); paintClock(); }
 const hhmm = s => { s = ((Math.floor(s) % DAY) + DAY) % DAY; return String(s / 3600 | 0).padStart(2, '0') + ':' + String((s % 3600) / 60 | 0).padStart(2, '0'); };
 
 /* ---------- colours ---------- */
+// sRGB colour with its OKLab lightness scaled by k (chroma scaled a little less), hue kept.
+function shade(c, k) {
+  const lin = v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4, enc = v => v <= .0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - .055;
+  const [r, g, b] = c.map(lin);
+  const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b), m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b), s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
+  let L = .2104542553 * l + .793617785 * m - .0040720468 * s, A = 1.9779984951 * l - 2.428592205 * m + .4505937099 * s, B = .0259040371 * l + .7827717662 * m - .808675766 * s;
+  const kc = Math.sqrt(k); L *= k; A *= kc; B *= kc;
+  const l2 = (L + .3963377774 * A + .2158037573 * B) ** 3, m2 = (L - .1055613458 * A - .0638541728 * B) ** 3, s2 = (L - .0894841775 * A - 1.291485548 * B) ** 3;
+  return [4.0767416621 * l2 - 3.3077115913 * m2 + .2309699292 * s2, -1.2684380046 * l2 + 2.6097574011 * m2 - .3413193965 * s2, -.0041960863 * l2 - .7034186147 * m2 + 1.707614701 * s2].map(v => Math.max(0, Math.min(1, enc(Math.max(0, v)))));
+}
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; }
 
 /* ---------- WebGL renderer (shared by the MapLibre custom layer and the stand-alone fallback) ---------- */
@@ -389,9 +402,9 @@ void main(){
   vec2 o=n*ml*(a_side*hw+u_off);
   gl_Position=vec4((s+o)/(u_res*.5)*c.w,0.,c.w);v_col=a_col;v_s=a_side*hw;
 }`;
-// Track: solid line colour. Two rails, one per direction, that merge into one line when zoomed out.
-const LINE_FS = `precision highp float;varying vec4 v_col;varying float v_s;uniform float u_w,u_gap;
-void main(){float d=abs(v_s);float a=clamp(u_w*.5+.5-d,0.,1.);if(u_gap>.01)a*=clamp(d-u_gap+.5,0.,1.);
+// Track: one flat band in the line's track tone, two trains wide.
+const LINE_FS = `precision highp float;varying vec4 v_col;varying float v_s;uniform float u_w;
+void main(){float a=clamp(u_w*.5+.5-abs(v_s),0.,1.);
   gl_FragColor=vec4(v_col.rgb,1.)*v_col.a*a;}`;
 const PT_VS = `precision highp float;
 attribute vec2 a_pos,a_dir;attribute vec4 a_col;attribute float a_size,a_kind;
@@ -405,27 +418,24 @@ void main(){
   float px=a_kind>1.5||a_kind<.5?u_tl*a_size+2.*u_pad:a_size*u_scale;
   gl_Position=vec4(s/(u_res*.5)*c.w,0.,c.w);gl_PointSize=px;v_px=px;v_sz=a_size;v_col=a_col;v_kind=a_kind;
 }`;
-// A train seen from above: a boxy metro car, three coaches, the front corners cut so it points the way it travels.
-// A station is drawn as its platform: a pill along the track, wide enough to take both rails, a train long.
+// Trains and platforms share one shape: a rounded box whose corner radius comes from the same unit as the track.
+// A train is three coaches with gaps between them, the leading coach lit. A platform is the track widening, a train long,
+// with corners concentric to the train's so a train stopped inside it sits exactly within it.
 const PT_FS = `precision highp float;varying vec4 v_col;varying float v_kind,v_px,v_sz;varying vec2 v_dir;
-uniform float u_tl,u_tw,u_coach,u_bw,u_rim;uniform vec2 u_pl;
+uniform float u_tl,u_tw,u_coach,u_gap,u_rad;uniform vec2 u_pl;uniform vec3 u_lead;
 float rbox(vec2 q,vec2 h,float r){vec2 d=abs(q)-h+r;return length(max(d,0.))+min(max(d.x,d.y),0.)-r;}
-float car(vec2 q,float L,float W){float hl=L*.5,hw=W*.5,nose=min(W*.7,L*.22);
-  vec2 n=normalize(vec2(hw*.55,nose));
-  return max(rbox(q,vec2(hl,hw),hw*.35),dot(vec2(q.x,abs(q.y))-vec2(hl,hw*.45),n));}
 void main(){vec2 p=vec2(gl_PointCoord.x*2.-1.,1.-gl_PointCoord.y*2.);
   vec2 q=p*v_px*.5;q=vec2(dot(q,v_dir),dot(q,vec2(-v_dir.y,v_dir.x)));
-  if(v_kind>.5&&v_kind<1.5){ // platform: black inside, a hairline in the line colour (white at interchanges)
-    vec2 h=u_pl*.5;float d=rbox(q,h,h.y);float a=clamp(.5-d,0.,1.);
-    vec3 col=v_col.rgb*clamp(d+u_bw+.5,0.,1.);
-    gl_FragColor=vec4(col,1.)*a*v_col.a;return;}
-  float L=u_tl*v_sz,W=u_tw*v_sz;float d=car(q,L,W);
-  if(v_kind>1.5){float a=clamp(1.3-abs(d-3.2),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
-  vec3 fill=v_col.rgb;
-  float gx=min(abs(q.x-L/6.),abs(q.x+L/6.)); // gaps between coaches, once the train is big enough to show them
-  if(u_coach>.5)fill*=mix(.15,1.,clamp(gx/u_rim*1.4-.2,0.,1.));
-  vec3 col=fill*clamp(-d-u_rim+.5,0.,1.); // a black rim, so the train never melts into its rail
-  gl_FragColor=vec4(col,1.)*clamp(.5-d,0.,1.)*v_col.a;
+  if(v_kind>.5&&v_kind<1.5){vec2 h=u_pl*.5;float d=rbox(q,h,min(h.y,u_rad+(u_pl.y-u_tw)*.5));
+    gl_FragColor=vec4(v_col.rgb,1.)*clamp(.5-d,0.,1.)*v_col.a;return;}
+  float L=u_tl*v_sz,W=u_tw*v_sz,r=u_rad*v_sz,cl=L/3.,d;
+  float k=u_coach>.5?clamp(floor(q.x/cl+.5),-1.,1.):0.; // which coach this pixel belongs to
+  if(u_coach>.5)d=rbox(q-vec2(k*cl,0.),vec2(cl*.5-u_gap*.5,W*.5),r);else d=rbox(q,vec2(L*.5,W*.5),r);
+  if(v_kind>1.5){float a=clamp(1.-abs(rbox(q,vec2(L*.5,W*.5),r)-u_gap*2.5)/(u_gap*.9),0.,1.);gl_FragColor=vec4(1.)*a*v_col.a;return;}
+  // the leading coach is lit, so you can tell which way a train is going without an arrow
+  float lead=u_coach>.5?step(.5,k):smoothstep(L*.12,L*.2,q.x);
+  vec3 col=v_col.rgb*mix(u_lead.x,1.,lead);
+  gl_FragColor=vec4(col,1.)*clamp(.5-d,0.,1.);
 }`;
 
 class Buf { // growable Float32 / Uint16 writer
@@ -447,15 +457,14 @@ function polyline(V, I, pts, rgba, fade) { // pts: [[x,y,f?]] in relative Mercat
   for (let i = 0; i < n - 1; i++) { const k = base + i * 2; I.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
 }
 
-// Sizes in CSS pixels by zoom. Each direction has its own rail, so trains never overlap.
+// One unit, u, the width of a train, sets everything (CSS px). The track is two trains wide with a gap of g
+// between them; corners are u * .3; platforms add u * .45 all round, so their corners are concentric with a train's.
 function sizes(z) {
-  const tw = Math.max(3.2, Math.min(10, 2.6 + (z - 10) * 1.45)), tl = tw * 3.4;
-  const split = Math.max(0, Math.min(1, (tw - 3.6) / 1.8)); // rails part as you zoom in
-  // zoomed out, the two lanes close up so the line is thinner than the trains on it, and trains stay easy to spot
-  const lane = (tw * .5 + .4) * (.4 + .6 * split), rail = Math.max(1.3, tw * .3), band = lane * 2 + rail;
-  // a platform takes both rails with a margin; zoomed out it is a round mark, zoomed in it is a train long
-  const pw = band + 4, pl = pw + (tl * 1.15 - pw) * Math.max(0, Math.min(1, (z - 11.6) / 1.6));
-  return { tw, tl, lane, rail, band, rim: Math.max(.6, Math.min(1.25, tw * .14)), gap: (lane - rail / 2) * split, pw, pl, st: Math.max(pw, pl * .55) };
+  const u = Math.max(3, Math.min(8, 2.6 + (z - 10) * 1.2)), g = Math.max(.75, u * .12);
+  const band = 2 * u + g, lane = (u + g) / 2, tl = u * 4.6;
+  // zoomed out a platform is round; from about zoom 12 it stretches to hold a whole train
+  const m = u * .45, pw = band + 2 * m, pl = pw + (tl + 2 * m + 2 * g - pw) * Math.max(0, Math.min(1, (z - 11.4) / 1.4));
+  return { u, tw: u, tl, g, band, lane, rad: u * .3, pw, pl, st: Math.max(pw, pl * .55) };
 }
 function makeGpu() {
   const g = { lineV: new Buf(Float32Array), lineI: new Buf(Uint16Array), stV: new Buf(Float32Array),
@@ -492,23 +501,23 @@ function makeGpu() {
     if (g.isGL2) gl.bindVertexArray(null); else if (g.vao) g.vao.bindVertexArrayOES(null);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND);
     const res = [gl.drawingBufferWidth, gl.drawingBufferHeight], dpr = view.dpr, z = view.zoom, S = sizes(z);
-    const tw = S.tw * dpr, tl = S.tl * dpr, trackW = S.band * dpr, off = S.lane * dpr;
+    const tw = S.u * dpr, tl = S.tl * dpr, trackW = S.band * dpr, off = S.lane * dpr;
     if (g.staticDirty) { upload(gl, gl.ARRAY_BUFFER, g.b.lineV, g.lineV.view(), gl.STATIC_DRAW); upload(gl, gl.ELEMENT_ARRAY_BUFFER, g.b.lineI, g.lineI.view(), gl.STATIC_DRAW);
       upload(gl, gl.ARRAY_BUFFER, g.b.stV, g.stV.view(), gl.STATIC_DRAW); g.staticDirty = false; }
     gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     // track: the line's own colour, solid, one rail per direction
     const L = g.line; gl.useProgram(L.p); gl.uniformMatrix4fv(L.u.u_m, false, M); gl.uniform2fv(L.u.u_res, res);
     gl.bindBuffer(gl.ARRAY_BUFFER, g.b.lineV); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.b.lineI); bindAttrs(gl, LINE_LAYOUT, 11);
-    if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0); gl.uniform1f(L.u.u_gap, S.gap * dpr);
+    if (g.lineI.n) { gl.uniform1f(L.u.u_w, trackW); gl.uniform1f(L.u.u_off, 0);
       gl.drawElements(gl.TRIANGLES, g.lineI.n, gl.UNSIGNED_SHORT, 0); }
     unbind(gl, 5);
     // platforms sit on the track, under the trains
     const P = g.pt; gl.useProgram(P.p); gl.uniformMatrix4fv(P.u.u_m, false, M); gl.uniform2fv(P.u.u_res, res);
-    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_coach, S.tw >= 5 ? 1 : 0);
-    gl.uniform1f(P.u.u_bw, 1.25 * dpr); gl.uniform1f(P.u.u_rim, S.rim * dpr); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr);
+    gl.uniform1f(P.u.u_tl, tl); gl.uniform1f(P.u.u_tw, tw); gl.uniform1f(P.u.u_coach, S.u >= 4.6 ? 1 : 0);
+    gl.uniform1f(P.u.u_gap, S.g * dpr); gl.uniform1f(P.u.u_rad, S.rad * dpr); gl.uniform2f(P.u.u_pl, S.pl * dpr, S.pw * dpr); gl.uniform3f(P.u.u_lead, .74, .74, .74);
     const pts = (buf, data, scale, o, pad, again) => { if (!data.n) return; gl.bindBuffer(gl.ARRAY_BUFFER, buf); if (data !== g.stV && !again) gl.bufferData(gl.ARRAY_BUFFER, data.view(), gl.DYNAMIC_DRAW);
       bindAttrs(gl, PT_LAYOUT, 10); gl.uniform1f(P.u.u_scale, scale * dpr); gl.uniform1f(P.u.u_off, o); gl.uniform1f(P.u.u_pad, pad); gl.drawArrays(gl.POINTS, 0, data.n / 10); };
-    pts(g.b.stV, g.stV, S.pl + 4, 0, 0);
+    pts(g.b.stV, g.stV, S.pl + 2, 0, 0);
     // trains, then the selection outline
     pts(g.b.headV, g.headV, 1, off, 2 * dpr);
     pts(g.b.fxV, g.fxV, 1, off, 6 * dpr);
@@ -528,7 +537,7 @@ function buildStatic() {
     for (const r of R) {
       if (r.line !== l || (r.id.endsWith('_R') && ids.has(r.id.slice(0, -2)))) continue;
       const pts = []; for (let i = 0; i < r.mx.length; i++) pts.push([r.mx[i] - ORIGIN[0], r.my[i] - ORIGIN[1]]);
-      polyline(g.lineV, g.lineI, pts, [...rgb[l], 1]);
+      polyline(g.lineV, g.lineI, pts, [...tone[l].track, 1]);
     }
   }
   // stations, one per name, for labels and taps; interchanges are on 2+ lines anywhere
@@ -543,7 +552,7 @@ function buildStatic() {
   stations = [...byName.values()].filter(s => s.on.size);
   // one platform per station per line, on that line's own track and turned to follow it
   for (const { s, r, d } of plat.values()) {
-    const [x, y] = posAt(r, d), [tx, ty] = headingAt(r, d), c = s.lines.size > 1 ? [1, 1, 1] : rgb[r.line];
+    const [x, y] = posAt(r, d), [tx, ty] = headingAt(r, d), c = tone[r.line].platform;
     g.stV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, 1, 1);
   }
   for (const s of stations) {
@@ -559,7 +568,7 @@ function buildDynamic(t) {
   trains = trainsAt(act, t, null);
   for (const o of trains) {
     const [x, y] = o.pos, [tx, ty] = headingAt(o.r, o.d);
-    const isPick = picked && picked.r === o.r && picked.s0 === o.s0, c = INK; // trains are white objects on their line
+    const isPick = picked && picked.r === o.r && picked.s0 === o.s0, c = INK; // every train is the same white object; the line under it says which line
     g.headV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, c[0], c[1], c[2], 1, isPick ? 1.18 : 1, 0);
     if (isPick) { picked.o = o; const a = RM.matches ? 1 : .55 + .45 * Math.sin(performance.now() / 260);
       g.fxV.push(x - ORIGIN[0], y - ORIGIN[1], tx, ty, 1, 1, 1, a, 1.18, 2); }
@@ -863,7 +872,7 @@ async function getMapLibre() { for (const u of CDN) { try { await loadScript(u, 
 Promise.all([fetch('data.json').then(r => r.json()), getMapLibre()]).then(async ([data, ml]) => {
   D = prepare(data); R = D.routes;
   lines = ORDER.filter(l => R.some(r => r.line === l)).concat([...new Set(R.map(r => r.line))].filter(l => !ORDER.includes(l)));
-  for (const l of lines) { color[l] = SHOW[l] || D.colors[l] || '#ffffff'; rgb[l] = hexRgb(color[l]); }
+  for (const l of lines) { color[l] = SHOW[l] || D.colors[l] || '#ffffff'; rgb[l] = hexRgb(color[l]); tone[l] = { track: shade(rgb[l], TONES.track), platform: shade(rgb[l], TONES.platform) }; }
   let saved = null; try { saved = JSON.parse(localStorage.getItem(LINES_KEY)); } catch (e) {}
   sel = new Set((Array.isArray(saved) ? saved : DEFAULT).filter(l => lines.includes(l)));
   dirs = directions(D); setActive();

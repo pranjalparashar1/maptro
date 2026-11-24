@@ -70,6 +70,7 @@ function tile(z, x, y) { const layers = {}; for (const [k, i] of Object.entries(
   await page.evaluate(() => window.__maptro.view(77.2, 28.62, 11)); await page.waitForTimeout(1500); await shot('11-all-lines');
   await page.evaluate(() => window.__maptro.view(77.228, 28.666, 14.6)); await page.waitForTimeout(1500); await shot('12-interchange');
   await page.click('#pickw .hx'); await page.waitForTimeout(800); await page.click('#none + .hx'); await page.click('#menu .row:nth-child(9) .hx'); await page.click('#pickw .hx'); await page.waitForTimeout(1500);
+  await page.click('#clockw .hx'); await page.waitForTimeout(300); // back to 1x so the train stays in frame
   await page.evaluate(() => { const ll = window.__maptro.trainLonLat(0) || [77.095, 28.556]; window.__maptro.view(ll[0], ll[1], 15); }); await page.waitForTimeout(150); await shot('13-airport-close-up');
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor); console.log('body bg', bg);
   await b.close();
