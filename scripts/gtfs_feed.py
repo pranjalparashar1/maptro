@@ -10,11 +10,12 @@ differ, not when the zip does: OTD builds the zip on request, so its bytes, date
 change while the timetable doesn't. `check` prints a Markdown summary (old and new counts side by
 side) and, inside GitHub Actions, sets the step outputs `changed` and `fingerprint`.
 
-OTD serves the DMRC feed from a form: GET the page for its CSRF token, then POST the token back
-(the same recipe Transitous uses, github.com/public-transport/transitous feeds/in-dl.json).
+OTD serves the DMRC feed from a form: GET the page, then submit its form (CSRF token, usage type,
+purpose) back. Transitous fetches it the same way (github.com/public-transport/transitous feeds/in-dl.json).
+If no form returns a zip, the page is saved as otd-page.html so the change can be seen.
 Only the standard library is needed.
 """
-import argparse, datetime, hashlib, http.cookiejar, io, json, os, re, sys, urllib.parse, urllib.request, zipfile
+import argparse, datetime, hashlib, html.parser, http.cookiejar, io, json, os, re, sys, urllib.error, urllib.parse, urllib.request, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 KNOWN = os.path.join(HERE, "gtfs_feed.json")
@@ -79,28 +80,91 @@ def summary(files):
     return s
 
 
+class _Forms(html.parser.HTMLParser):
+    """Collects every <form>: its action, method and fields. A <select> gets the option matching PREFER, else its first."""
+    def __init__(self):
+        super().__init__(); self.forms, self._sel = [], None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "form":
+            self.forms.append(dict(action=a.get("action") or "", method=(a.get("method") or "get").lower(), fields={}))
+        elif not self.forms:
+            return
+        elif tag == "input" and a.get("name") and a.get("type", "text").lower() in ("radio", "checkbox"):
+            f, v = self.forms[-1]["fields"], a.get("value") or "on"
+            if f.get(a["name"]) is None or any(x in v.lower() for x in PREFER):
+                f[a["name"]] = v
+        elif tag == "input" and a.get("name") and a.get("type", "text").lower() not in ("submit", "button"):
+            self.forms[-1]["fields"][a["name"]] = a.get("value") or ""
+        elif tag == "select" and a.get("name"):
+            self._sel = a["name"]; self.forms[-1]["fields"].setdefault(self._sel, None)
+        elif tag == "option" and self._sel:
+            v = a.get("value", ""); f = self.forms[-1]["fields"]
+            if v and (f[self._sel] is None or any(x in v.lower() for x in PREFER)):
+                f[self._sel] = v
+
+    def handle_endtag(self, tag):
+        if tag == "select":
+            self._sel = None
+
+
+PREFER = ("non-commercial", "non_commercial", "noncommercial", "academ")
+# OTD's form asks for a name and an e-mail. Set OTD_NAME / OTD_EMAIL (repository variables in the workflow)
+# if it starts insisting on real ones.
+DEFAULTS = {"name": "GTFS feed watcher", "email": ""}
+
+
 def download(out, url=URL, timeout=120):
-    """Fetch the DMRC GTFS zip from OTD into `out`."""
+    """Fetch the DMRC GTFS zip from OTD into `out`.
+
+    The page (Nov 2026) has one Django form per download button, each posting back to the page with a CSRF
+    token, `dataDownloaded`, a usage-type radio, purpose checkboxes, name and e-mail. Every form carrying the
+    token is tried in order (the first is "Download Data", the whole zip) until one returns a zip.
+    """
     jar = http.cookiejar.CookieJar()
     op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
     op.addheaders = [("User-Agent", UA)]
-    with op.open(url, timeout=timeout) as f:
-        page = f.read().decode("utf-8", "replace")
-    m = re.search(r'name=["\']csrfmiddlewaretoken["\'][^>]*value=["\']([^"\']+)', page) or \
-        re.search(r'value=["\']([^"\']+)["\'][^>]*name=["\']csrfmiddlewaretoken', page)
-    if not m:
-        raise SystemExit(f"{url}: no csrfmiddlewaretoken on the page; OTD's download form has changed")
-    token = m.group(1)
-    req = urllib.request.Request(url, data=urllib.parse.urlencode({"csrfmiddlewaretoken": token}).encode(),
-                                 headers={"Content-Type": "application/x-www-form-urlencoded", "Referer": url,
-                                          "Cookie": f"csrftoken={token}"})
-    with op.open(req, timeout=timeout) as f:
-        body, headers = f.read(), dict(f.headers)
-    if not body.startswith(b"PK"):
-        raise SystemExit(f"{url}: expected a zip, got {headers.get('Content-Type')} ({len(body)} bytes)")
-    with open(out, "wb") as f:
-        f.write(body)
-    return {k: headers[k] for k in ("Last-Modified", "ETag", "Content-Disposition", "Content-Length") if k in headers}
+    try:
+        with op.open(url, timeout=timeout) as f:
+            page = f.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"GET {url} failed: HTTP {e.code} {e.reason}")
+    fp = _Forms(); fp.feed(page)
+    forms = [f for f in fp.forms if "csrfmiddlewaretoken" in f["fields"]]
+    if not forms:
+        _keep(page)
+        raise SystemExit(f"{url}: no form with a csrfmiddlewaretoken on the page; OTD's download page has changed (saved as otd-page.html)")
+    tried = []
+    for form in forms:
+        target = urllib.parse.urljoin(url, form["action"]) if form["action"] else url
+        fields = {k: v or "" for k, v in form["fields"].items()}
+        for k, env in (("name", "OTD_NAME"), ("email", "OTD_EMAIL")):
+            if k in fields and not fields[k]:
+                fields[k] = os.environ.get(env) or DEFAULTS[k]
+        data = urllib.parse.urlencode(fields).encode()
+        headers = {"Content-Type": "application/x-www-form-urlencoded", "Referer": url}
+        if not any(c.name == "csrftoken" for c in jar):
+            headers["Cookie"] = f"csrftoken={fields['csrfmiddlewaretoken']}"
+        req = urllib.request.Request(target, data=data, headers=headers) if form["method"] == "post" else \
+            urllib.request.Request(target + ("&" if "?" in target else "?") + data.decode(), headers=headers)
+        try:
+            with op.open(req, timeout=timeout) as f:
+                body, h = f.read(), dict(f.headers)
+        except urllib.error.HTTPError as e:
+            tried.append(f"{form['method'].upper()} {target} with {sorted(fields)}: HTTP {e.code}"); continue
+        if body.startswith(b"PK"):
+            with open(out, "wb") as f:
+                f.write(body)
+            return {k: h[k] for k in ("Last-Modified", "ETag", "Content-Disposition", "Content-Length") if k in h}
+        tried.append(f"{form['method'].upper()} {target} with {sorted(fields)}: {h.get('Content-Type')}, {len(body)} bytes, not a zip")
+    _keep(page)
+    raise SystemExit("no form on the page returned a zip (page saved as otd-page.html):\n  " + "\n  ".join(tried))
+
+
+def _keep(page):
+    with open("otd-page.html", "w", encoding="utf-8") as f:
+        f.write(page)
 
 
 def compare(known, files, fp, headers=None):

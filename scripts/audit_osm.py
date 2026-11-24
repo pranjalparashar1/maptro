@@ -51,7 +51,8 @@ def norm(name):
     s = re.sub(r"\bsec(tor)?\b\.?", "sector", s)
     s = re.sub(r"\b(metro station|metro|station|rly|railway)\b", " ", s)
     s = re.sub(r"[^a-z0-9]+", " ", s)
-    return " ".join(s.split())
+    s = " ".join({"i": "1", "ii": "2", "iii": "3", "iv": "4"}.get(w, w) for w in s.split())  # Phase-I, Mayur Vihar-II
+    return s
 
 
 def aliases(name):
@@ -66,10 +67,13 @@ def aliases(name):
 
 
 def score(a, b):
-    """Name similarity, 0..1. A whole-word subset ('kashmere gate' in 'kashmere gate isbt') counts as 0.9."""
+    """Name similarity, 0..1. Names with different numbers never match. A whole-word subset ('kashmere gate' in 'kashmere gate isbt') counts as 0.9."""
     best = 0.0
     for x in a:
         for y in b:
+            nx, ny = set(re.findall(r"\d+", x)), set(re.findall(r"\d+", y))
+            if nx and ny and nx != ny:
+                continue  # 'phase 1' is not 'phase 3', 'sector 18' is not 'sector 81'
             r = difflib.SequenceMatcher(None, x, y).ratio()
             tx, ty = set(x.split()), set(y.split())
             if tx and ty and (tx <= ty or ty <= tx) and min(len(tx), len(ty)) >= 2:

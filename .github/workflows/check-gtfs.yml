@@ -36,6 +36,9 @@ jobs:
 
       - name: Download the feed and compare
         id: check
+        env:
+          OTD_NAME: ${{ vars.OTD_NAME }}
+          OTD_EMAIL: ${{ vars.OTD_EMAIL }}
         run: python3 scripts/gtfs_feed.py check --download feed.zip --report report.md
 
       - name: Install pandas
@@ -103,6 +106,19 @@ jobs:
             echo "\`python3 scripts/gtfs_feed.py record path/to/feed --source \"...\"\` so this watch stops reporting it."
           } > issue.md
           gh issue create --title "New DMRC GTFS feed on Open Transit Data ($short)" --body-file issue.md
+
+      - name: Show OTD's page if the download failed
+        if: failure()
+        run: '[ -f otd-page.html ] && cat otd-page.html || true'
+
+      - name: Keep OTD's page if the download failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: otd-page
+          path: otd-page.html
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Summary
         if: always()
